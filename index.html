@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Powkiddy Playlist Editor</title>
+  <link rel="stylesheet" href="src/style.css" />
+</head>
+<body>
+
+  <header class="app-header">
+    <div class="header-inner">
+      <h1>🎮 Powkiddy Playlist Editor</h1>
+      <p class="subtitle">Powkiddy XML ↔ RetroArch .lpl 게임 플레이리스트 편집기</p>
+    </div>
+  </header>
+
+  <main class="app-main">
+
+    <!-- 파일 가져오기 -->
+    <section class="panel">
+      <h2>📂 파일 불러오기</h2>
+      <div id="dropzone" class="dropzone" tabindex="0" role="button" aria-label="파일 열기">
+        <div class="dropzone-icon">📄</div>
+        <p class="dropzone-text">
+          <strong>클릭하거나 파일을 드래그하세요</strong><br />
+          <span class="dropzone-sub">Powkiddy <code>game_strings_ko.xml</code> 또는 RetroArch <code>.lpl</code> 파일</span>
+        </p>
+      </div>
+      <input type="file" id="fileInput" accept=".xml,.lpl" hidden />
+    </section>
+
+    <!-- 툴바 -->
+    <section class="panel toolbar-panel">
+      <div class="toolbar-left">
+        <button id="addBtn" class="btn primary" title="게임 추가">+ 추가</button>
+        <button id="deleteBtn" class="btn danger" title="선택 삭제">🗑 삭제</button>
+        <button id="moveUpBtn" class="btn" title="위로 이동">↑ 위로</button>
+        <button id="moveDownBtn" class="btn" title="아래로 이동">↓ 아래로</button>
+        <button id="renumberBtn" class="btn" title="번호 재정렬">🔢 번호 재정렬</button>
+      </div>
+      <div class="toolbar-right">
+        <input
+          type="search"
+          id="searchInput"
+          class="search-input"
+          placeholder="🔍 게임 검색..."
+          aria-label="게임 검색"
+        />
+        <span id="gameCount" class="game-count">총 0개 게임</span>
+      </div>
+    </section>
+
+    <!-- 게임 목록 -->
+    <section class="panel list-panel">
+      <div class="table-wrap">
+        <table class="game-table">
+          <thead>
+            <tr>
+              <th class="col-num">#</th>
+              <th class="col-name">표시 이름</th>
+              <th class="col-path">ROM 파일명</th>
+              <th class="col-actions"></th>
+            </tr>
+          </thead>
+          <tbody id="gameList">
+            <tr>
+              <td colspan="4" class="empty-msg">파일을 불러오거나 게임을 추가하세요</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 내보내기 -->
+    <section class="panel export-panel">
+      <h2>💾 내보내기</h2>
+
+      <div id="exportOptions" class="export-options" style="display:none">
+        <label class="field-label">
+          <span>ROM 기본 경로 (RetroArch용)</span>
+          <input
+            type="text"
+            id="romBasePath"
+            class="text-input"
+            placeholder="예: /storage/roms/FC/"
+          />
+        </label>
+        <label class="field-label">
+          <span>DB 이름 (RetroArch용)</span>
+          <input
+            type="text"
+            id="dbName"
+            class="text-input"
+            placeholder="예: Nintendo - Nintendo Entertainment System.lpl"
+          />
+        </label>
+      </div>
+
+      <div class="export-buttons">
+        <div class="export-card">
+          <div class="export-card-icon">📱</div>
+          <div class="export-card-info">
+            <strong>Powkiddy XML</strong>
+            <span>game_strings_ko.xml</span>
+          </div>
+          <button id="exportPowkiddy" class="btn primary">내보내기</button>
+        </div>
+        <div class="export-card">
+          <div class="export-card-icon">🕹️</div>
+          <div class="export-card-info">
+            <strong>RetroArch .lpl</strong>
+            <span>playlist.lpl (JSON)</span>
+          </div>
+          <button id="exportRetroArch" class="btn secondary">내보내기</button>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- 상태 메시지 -->
+  <div id="status" class="status" aria-live="polite"></div>
+
+  <!-- 사용 방법 -->
+  <footer class="app-footer">
+    <details>
+      <summary>💡 사용 방법</summary>
+      <div class="help-content">
+        <ul>
+          <li><strong>불러오기:</strong> Powkiddy의 <code>settings/res/[시스템]/string/game_strings_ko.xml</code> 또는 RetroArch의 <code>.lpl</code> 파일을 드래그하거나 클릭하여 불러옵니다.</li>
+          <li><strong>편집:</strong> 행을 클릭하여 선택하고, ✏️ 버튼으로 이름/경로를 수정합니다. Ctrl+클릭으로 다중 선택, Shift+클릭으로 범위 선택이 가능합니다.</li>
+          <li><strong>순서 변경:</strong> 게임을 선택 후 ↑/↓ 버튼으로 순서를 바꿉니다.</li>
+          <li><strong>번호 재정렬:</strong> 순서 변경 후 🔢 버튼으로 이름의 번호를 자동 업데이트합니다.</li>
+          <li><strong>내보내기:</strong> Powkiddy XML은 장치의 <code>string/</code> 폴더에, RetroArch .lpl은 플레이리스트 폴더에 넣으세요.</li>
+        </ul>
+        <p class="note">⚠️ 모든 처리는 브라우저 내에서만 이루어집니다. 파일이 서버로 전송되지 않습니다.</p>
+      </div>
+    </details>
+    <p class="footer-copy">
+      <a href="https://github.com/nemo/powkiddy" target="_blank" rel="noopener">GitHub</a>
+      &nbsp;·&nbsp; Powkiddy Playlist Editor
+    </p>
+  </footer>
+
+  <script type="module" src="src/app.js"></script>
+</body>
+</html>
