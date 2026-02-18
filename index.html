@@ -17,17 +17,42 @@
 
   <main class="app-main">
 
-    <!-- 파일 가져오기 -->
-    <section class="panel">
-      <h2>📂 파일 불러오기</h2>
-      <div id="dropzone" class="dropzone" tabindex="0" role="button" aria-label="파일 열기">
-        <div class="dropzone-icon">📄</div>
-        <p class="dropzone-text">
-          <strong>클릭하거나 파일을 드래그하세요</strong><br />
-          <span class="dropzone-sub">Powkiddy <code>game_strings_ko.xml</code> 또는 RetroArch <code>.lpl</code> 파일</span>
-        </p>
+    <!-- 파일 가져오기 / 생성하기 -->
+    <section class="panel import-panel">
+      <div class="import-col">
+        <h2>📂 파일 불러오기</h2>
+        <label id="dropzone" for="fileInput" class="dropzone" tabindex="0" role="button" aria-label="파일 열기">
+          <div class="dropzone-icon">📄</div>
+          <p class="dropzone-text">
+            <strong>클릭하거나 파일을 드래그하세요</strong><br />
+            <span class="dropzone-sub">Powkiddy <code>game_strings_ko.xml</code> 또는 RetroArch <code>.lpl</code> 파일</span>
+          </p>
+        </label>
+        <input type="file" id="fileInput" accept=".xml,.lpl" hidden />
       </div>
-      <input type="file" id="fileInput" accept=".xml,.lpl" hidden />
+      <div class="import-divider"></div>
+      <div class="import-col">
+        <h2>📁 파일 생성하기</h2>
+        <div id="folderZone" class="dropzone" tabindex="0" role="button" aria-label="폴더 선택">
+          <div class="dropzone-icon">🗂️</div>
+          <p class="dropzone-text">
+            <strong>클릭하여 ROM 폴더를 선택하세요</strong><br />
+            <span class="dropzone-sub">폴더 내 파일명으로 게임 목록을 자동 생성합니다</span>
+          </p>
+        </div>
+      </div>
+      <div class="import-divider"></div>
+      <div class="import-col import-col--thumb">
+        <h2>🖼️ 이미지 확인</h2>
+        <div class="thumb-check-area">
+          <label class="thumb-label">
+            <input type="checkbox" id="thumbCheck" />
+            <span>썸네일 폴더 사용</span>
+          </label>
+          <span id="thumbInfo" class="thumb-info"></span>
+        </div>
+        <p class="thumb-hint">체크하면 thumbnails 폴더를 선택합니다.<br />ROM 파일명과 같은 이름의 이미지를 목록에 표시합니다.</p>
+      </div>
     </section>
 
     <!-- 툴바 -->
@@ -37,7 +62,9 @@
         <button id="deleteBtn" class="btn danger" title="선택 삭제">🗑 삭제</button>
         <button id="moveUpBtn" class="btn" title="위로 이동">↑ 위로</button>
         <button id="moveDownBtn" class="btn" title="아래로 이동">↓ 아래로</button>
-        <button id="renumberBtn" class="btn" title="번호 재정렬">🔢 번호 재정렬</button>
+        <button id="sortBtn" class="btn" title="가나다순 정렬">가나다 정렬</button>
+        <button id="autoSearchBtn" class="btn" title="폴더를 검색해 이미지 자동 적용">🔍 이미지 자동 검색</button>
+        <button id="cleanupThumbBtn" class="btn" title="썸네일 폴더에서 사용되지 않는 이미지 삭제">🗑 이미지 자동 정리</button>
       </div>
       <div class="toolbar-right">
         <input
@@ -53,6 +80,14 @@
 
     <!-- 게임 목록 -->
     <section class="panel list-panel">
+      <div class="list-filter-bar">
+        <span class="list-filter-label">필터</span>
+        <div class="list-filter-chips" id="listFilterChips">
+          <button class="list-filter-chip active" data-filter="all">전체</button>
+          <button class="list-filter-chip" data-filter="no-image">🖼️ 이미지 없음</button>
+          <button class="list-filter-chip" data-filter="no-rom">📂 ROM 없음</button>
+        </div>
+      </div>
       <div class="table-wrap">
         <table class="game-table">
           <thead>
@@ -60,6 +95,7 @@
               <th class="col-num">#</th>
               <th class="col-name">표시 이름</th>
               <th class="col-path">ROM 파일명</th>
+              <th id="col-thumb-head" class="col-thumb" style="display:none">이미지</th>
               <th class="col-actions"></th>
             </tr>
           </thead>
@@ -141,7 +177,10 @@
           <li><strong>불러오기:</strong> Powkiddy의 <code>settings/res/[시스템]/string/game_strings_ko.xml</code> 또는 RetroArch의 <code>.lpl</code> 파일을 드래그하거나 클릭하여 불러옵니다.</li>
           <li><strong>편집:</strong> 행을 클릭하여 선택하고, ✏️ 버튼으로 이름/경로를 수정합니다. Ctrl+클릭으로 다중 선택, Shift+클릭으로 범위 선택이 가능합니다.</li>
           <li><strong>순서 변경:</strong> 게임을 선택 후 ↑/↓ 버튼으로 순서를 바꿉니다.</li>
-          <li><strong>번호 재정렬:</strong> 순서 변경 후 🔢 버튼으로 이름의 번호를 자동 업데이트합니다.</li>
+          <li><strong>가나다 정렬:</strong> 숫자 → 영문 → 한글 순으로 표시 이름을 정렬합니다.</li>
+          <li><strong>🖼️ 이미지 확인:</strong> 체크하면 썸네일 폴더를 선택합니다. ROM 파일명 또는 표시 이름과 같은 이름의 이미지를 목록에 표시합니다.</li>
+          <li><strong>🔍 이미지 자동 검색:</strong> 폴더를 선택하면 하위 폴더까지 재귀 검색하여 표시 이름과 일치하는 PNG 파일을 자동으로 적용합니다. 폴더 추가 시 하위 폴더를 여러 개 동시에 선택할 수 있습니다.</li>
+          <li><strong>🗑 이미지 자동 정리:</strong> 썸네일 폴더에서 게임 목록의 표시 이름 또는 ROM 파일명과 일치하지 않는 이미지를 찾아 삭제합니다.</li>
           <li><strong>내보내기:</strong> Powkiddy XML은 장치의 <code>string/</code> 폴더에, RetroArch .lpl은 플레이리스트 폴더에 넣으세요.</li>
         </ul>
         <p class="note">⚠️ 모든 처리는 브라우저 내에서만 이루어집니다. 파일이 서버로 전송되지 않습니다.</p>
@@ -153,6 +192,6 @@
     </p>
   </footer>
 
-  <script type="module" src="src/app.js"></script>
+  <script src="src/app.js"></script>
 </body>
 </html>
