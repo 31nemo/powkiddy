@@ -2,7 +2,7 @@
 
 Powkiddy A12 게임기의 `game_strings_ko.xml`과 RetroArch `.lpl` 플레이리스트 파일을 편집하는 웹 에디터입니다.
 
-**👉 [바로 사용하기](https://YOUR_GITHUB_USERNAME.github.io/powkiddy/)**
+**👉 [바로 사용하기](https://31nemo.github.io/powkiddy/)**
 
 ## 기능
 
