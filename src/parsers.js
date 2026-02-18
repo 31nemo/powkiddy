@@ -1,6 +1,6 @@
 /**
  * Powkiddy XML 파서 / 내보내기
- * RetroArch .lpl 파서 / 내보내기
+ * RetroArch .lpl (6줄 텍스트 포맷) 파서 / 내보내기
  */
 
 // ─── Powkiddy XML ───────────────────────────────────────────────────────────
@@ -19,22 +19,16 @@ export function parsePowkiddyXml(xmlText) {
     throw new Error('XML 파싱 오류: ' + parseError.textContent);
   }
 
-  const games = [];
-  // icon_page1, icon_page2, ... 순서대로
-  const pages = doc.querySelectorAll('[class^="icon_page"], strings_resources > *');
-
-  // icon_pageN 엘리먼트들 가져오기
   const root = doc.querySelector('strings_resources');
   if (!root) throw new Error('strings_resources 루트 엘리먼트를 찾을 수 없습니다.');
 
+  const games = [];
   for (const child of root.children) {
     if (!child.tagName.startsWith('icon_page')) continue;
     for (const entry of child.children) {
       const name = entry.getAttribute('name') || '';
       const gamePath = entry.getAttribute('game_path') || '';
-      if (gamePath) {
-        games.push({ name, gamePath });
-      }
+      if (gamePath) games.push({ name, gamePath });
     }
   }
 
@@ -60,9 +54,7 @@ export function exportPowkiddyXml(games) {
       const idx = p * pageSize + i;
       if (idx >= total) break;
       const { name, gamePath } = games[idx];
-      const escapedName = escapeXml(name);
-      const escapedPath = escapeXml(gamePath);
-      xml += `    <icon${i}_para name="${escapedName}" game_path="${escapedPath}" />\n`;
+      xml += `    <icon${i}_para name="${escapeXml(name)}" game_path="${escapeXml(gamePath)}" />\n`;
     }
     xml += `  </icon_page${p + 1}>\n`;
   }
@@ -71,78 +63,95 @@ export function exportPowkiddyXml(games) {
   return xml;
 }
 
-// ─── RetroArch .lpl ─────────────────────────────────────────────────────────
+// ─── RetroArch .lpl (6줄 텍스트 포맷) ──────────────────────────────────────
+//
+// 엔트리당 6줄 구조:
+//   줄1: ROM 전체 경로  (/sdcard/.../roms/[폴더]/[파일명].nes)
+//   줄2: 표시 이름
+//   줄3: 코어 경로     (/sdcard/.../cores/[코어].so)
+//   줄4: CRC32         (보통 DETECT)
+//   줄5: 알 수 없음    (보통 DETECT)
+//   줄6: DB 이름       (예: Nintendo - Nintendo Entertainment System (Add-Korea).lol)
+
+const LINES_PER_ENTRY = 6;
 
 /**
- * RetroArch .lpl (JSON) 파일을 파싱하여 게임 목록 반환
- * @param {string} jsonText
- * @returns {{ games: Array<{name: string, gamePath: string}>, meta: object }}
+ * RetroArch .lpl (6줄 텍스트) 파일을 파싱하여 게임 목록 반환
+ * @param {string} text
+ * @returns {{ games: Array<{name: string, gamePath: string, _romPath: string, _corePath: string, _crc32: string, _field5: string, _dbName: string}>, meta: {romBasePath: string, corePath: string, dbName: string} }}
  */
-export function parseRetroArchLpl(jsonText) {
-  const data = JSON.parse(jsonText);
-  const items = data.items || [];
+export function parseRetroArchLpl(text) {
+  const lines = text.split(/\r?\n/);
 
-  const games = items.map(item => ({
-    name: item.label || '',
-    gamePath: extractFilename(item.path || ''),
-    // 원본 데이터 보존
-    _path: item.path || '',
-    _corePath: item.core_path || 'DETECT',
-    _coreName: item.core_name || 'DETECT',
-    _crc32: item.crc32 || 'DETECT',
-    _dbName: item.db_name || '',
-  }));
+  // 마지막 빈 줄 제거
+  while (lines.length && lines[lines.length - 1].trim() === '') lines.pop();
 
-  // items 제외한 메타 정보
-  const { items: _, ...meta } = data;
+  if (lines.length % LINES_PER_ENTRY !== 0) {
+    console.warn(`줄 수 ${lines.length}가 ${LINES_PER_ENTRY}의 배수가 아닙니다. 불완전한 마지막 항목은 무시됩니다.`);
+  }
+
+  const games = [];
+  const entryCount = Math.floor(lines.length / LINES_PER_ENTRY);
+
+  for (let i = 0; i < entryCount; i++) {
+    const base = i * LINES_PER_ENTRY;
+    const romPath  = lines[base + 0] || '';
+    const label    = lines[base + 1] || '';
+    const corePath = lines[base + 2] || '';
+    const crc32    = lines[base + 3] || 'DETECT';
+    const field5   = lines[base + 4] || 'DETECT';
+    const dbName   = lines[base + 5] || '';
+
+    games.push({
+      name: label,
+      gamePath: extractFilename(romPath),
+      _romPath: romPath,
+      _corePath: corePath,
+      _crc32: crc32,
+      _field5: field5,
+      _dbName: dbName,
+    });
+  }
+
+  // 공통 경로 추출 (ROM 기본 폴더, 코어 경로, DB 이름)
+  const meta = {
+    romBasePath: games.length ? extractDirPath(games[0]._romPath) : '',
+    corePath:    games.length ? games[0]._corePath : '',
+    dbName:      games.length ? games[0]._dbName   : '',
+  };
+
   return { games, meta };
 }
 
 /**
- * 게임 목록을 RetroArch .lpl JSON 형식으로 직렬화
- * @param {Array<{name: string, gamePath: string, _path?: string, _corePath?: string, _coreName?: string, _crc32?: string, _dbName?: string}>} games
- * @param {object} meta - 원본 메타데이터 (version, default_core_path 등)
- * @param {string} romBasePath - ROM 기본 경로 (예: /storage/roms/FC/)
- * @param {string} dbName - 데이터베이스 이름 (예: Nintendo - Nintendo Entertainment System.lpl)
- * @returns {string} JSON 문자열
+ * 게임 목록을 RetroArch .lpl (6줄 텍스트) 형식으로 직렬화
+ * @param {Array<{name: string, gamePath: string, _romPath?: string, _corePath?: string, _crc32?: string, _field5?: string, _dbName?: string}>} games
+ * @param {{ romBasePath: string, corePath: string, dbName: string }} meta
+ * @returns {string}
  */
-export function exportRetroArchLpl(games, meta = {}, romBasePath = '', dbName = '') {
-  const items = games.map(game => {
-    const path = game._path
-      ? game._path
+export function exportRetroArchLpl(games, meta = {}) {
+  const { romBasePath = '', corePath = '', dbName = '' } = meta;
+
+  return games.map(game => {
+    const romPath = game._romPath
+      ? game._romPath  // 원본 경로 보존
       : romBasePath
         ? romBasePath.replace(/\/$/, '') + '/' + game.gamePath
         : game.gamePath;
 
-    return {
-      path,
-      label: game.name,
-      core_path: game._corePath || 'DETECT',
-      core_name: game._coreName || 'DETECT',
-      crc32: game._crc32 || 'DETECT',
-      db_name: game._dbName || dbName || '',
-    };
-  });
+    const core   = game._corePath || corePath || 'DETECT';
+    const crc32  = game._crc32  || 'DETECT';
+    const field5 = game._field5 || 'DETECT';
+    const db     = game._dbName || dbName || '';
 
-  const output = {
-    version: '1.5',
-    default_core_path: '',
-    default_core_name: '',
-    label_display_mode: 0,
-    right_thumbnail_mode: 0,
-    left_thumbnail_mode: 0,
-    sort_mode: 0,
-    ...meta,
-    items,
-  };
-
-  return JSON.stringify(output, null, 2);
+    return [romPath, game.name, core, crc32, field5, db].join('\n');
+  }).join('\n') + '\n';
 }
 
 // ─── 유틸 ────────────────────────────────────────────────────────────────────
 
 function escapeXml(str) {
-  return str
+  return String(str)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
@@ -152,4 +161,10 @@ function escapeXml(str) {
 
 function extractFilename(path) {
   return path.split('/').pop() || path;
+}
+
+function extractDirPath(path) {
+  const parts = path.split('/');
+  parts.pop();
+  return parts.join('/') + '/';
 }

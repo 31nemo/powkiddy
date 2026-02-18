@@ -387,6 +387,13 @@ body {
   border-color: var(--accent);
 }
 
+.export-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 4px;
+  flex-basis: 100%;
+}
+
 .export-buttons {
   display: flex;
   gap: 12px;

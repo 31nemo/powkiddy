@@ -35,6 +35,7 @@ const exportPowkiddyBtn = document.getElementById('exportPowkiddy');
 const exportRetroArchBtn = document.getElementById('exportRetroArch');
 const romBasePathEl = document.getElementById('romBasePath');
 const dbNameEl = document.getElementById('dbName');
+const corePathEl = document.getElementById('corePath');
 const exportOptionsEl = document.getElementById('exportOptions');
 const statusEl = document.getElementById('status');
 
@@ -95,15 +96,10 @@ function handleFile(file) {
         state.games = games;
         state.importedFrom = 'retroarch';
         state.retroarchMeta = meta;
-        // ROM 기본 경로 추측
-        if (games.length && games[0]._path) {
-          const parts = games[0]._path.split('/');
-          parts.pop();
-          romBasePathEl.value = parts.join('/') + '/';
-        }
-        if (games.length && games[0]._dbName) {
-          dbNameEl.value = games[0]._dbName;
-        }
+        // 파싱한 메타 정보를 입력 필드에 자동 반영
+        romBasePathEl.value = meta.romBasePath || '';
+        dbNameEl.value = meta.dbName || '';
+        corePathEl.value = meta.corePath || '';
         exportOptionsEl.style.display = 'block';
         setStatus(`✅ RetroArch .lpl 로드 완료 - ${games.length}개 게임`, 'success');
       } else {
@@ -318,11 +314,15 @@ function doExport(format) {
     filename = 'game_strings_ko.xml';
     mimeType = 'application/xml';
   } else {
-    const romBase = romBasePathEl.value.trim();
-    const db = dbNameEl.value.trim();
-    content = exportRetroArchLpl(state.games, state.retroarchMeta, romBase, db);
+    const meta = {
+      ...state.retroarchMeta,
+      romBasePath: romBasePathEl.value.trim() || state.retroarchMeta.romBasePath || '',
+      corePath:    corePathEl.value.trim()    || state.retroarchMeta.corePath    || '',
+      dbName:      dbNameEl.value.trim()      || state.retroarchMeta.dbName      || '',
+    };
+    content = exportRetroArchLpl(state.games, meta);
     filename = 'playlist.lpl';
-    mimeType = 'application/json';
+    mimeType = 'text/plain';
   }
 
   downloadText(content, filename, mimeType);

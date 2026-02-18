@@ -78,23 +78,33 @@
 
       <div id="exportOptions" class="export-options" style="display:none">
         <label class="field-label">
-          <span>ROM 기본 경로 (RetroArch용)</span>
+          <span>ROM 기본 경로</span>
           <input
             type="text"
             id="romBasePath"
             class="text-input"
-            placeholder="예: /storage/roms/FC/"
+            placeholder="예: /sdcard/settings/retroarch/roms/Nintendo - Nintendo Entertainment System (Add-Korea)/"
           />
         </label>
         <label class="field-label">
-          <span>DB 이름 (RetroArch용)</span>
+          <span>코어 경로</span>
+          <input
+            type="text"
+            id="corePath"
+            class="text-input"
+            placeholder="예: /sdcard/settings/retroarch/cores/fceumm_libretro.so"
+          />
+        </label>
+        <label class="field-label">
+          <span>DB 이름</span>
           <input
             type="text"
             id="dbName"
             class="text-input"
-            placeholder="예: Nintendo - Nintendo Entertainment System.lpl"
+            placeholder="예: Nintendo - Nintendo Entertainment System (Add-Korea).lol"
           />
         </label>
+        <p class="export-hint">💡 .lpl 파일을 불러오면 위 값이 자동으로 채워집니다.</p>
       </div>
 
       <div class="export-buttons">
