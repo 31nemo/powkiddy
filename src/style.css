@@ -1,6 +1,8 @@
 /* ─── 리셋 & 기본 ────────────────────────────────────────────────────────── */
 
-*, *::before, *::after {
+*,
+*::before,
+*::after {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
@@ -22,7 +24,7 @@
   --selected-border: rgba(108, 99, 255, 0.5);
   --radius: 10px;
   --radius-sm: 6px;
-  --shadow: 0 4px 20px rgba(0,0,0,0.4);
+  --shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
   --font: 'Segoe UI', 'Noto Sans KR', system-ui, sans-serif;
 }
 
@@ -162,6 +164,7 @@ body {
   .import-panel {
     flex-direction: column;
   }
+
   .import-divider {
     width: 100%;
     height: 1px;
@@ -270,6 +273,7 @@ body {
   color: #fff;
   font-weight: 600;
 }
+
 .btn.primary:hover {
   background: var(--accent-hover);
   border-color: var(--accent-hover);
@@ -281,6 +285,7 @@ body {
   color: #000;
   font-weight: 600;
 }
+
 .btn.secondary:hover {
   background: #00bfa0;
   border-color: #00bfa0;
@@ -290,6 +295,7 @@ body {
   border-color: var(--danger);
   color: var(--danger);
 }
+
 .btn.danger:hover {
   background: rgba(255, 75, 110, 0.12);
 }
@@ -304,6 +310,7 @@ body {
   opacity: 0.7;
   transition: opacity 0.15s;
 }
+
 .btn-icon:hover {
   opacity: 1;
   background: var(--bg3);
@@ -323,6 +330,7 @@ body {
   outline: none;
   transition: border-color 0.2s;
 }
+
 .search-input:focus {
   border-color: var(--accent);
 }
@@ -435,7 +443,7 @@ body {
 }
 
 .game-table tbody tr:hover {
-  background: rgba(255,255,255,0.03);
+  background: rgba(255, 255, 255, 0.03);
 }
 
 .game-table tbody tr.selected {
@@ -485,6 +493,7 @@ body {
   padding: 2px;
   transition: opacity 0.15s;
 }
+
 .thumb-upload-btn:hover {
   opacity: 1;
 }
@@ -518,6 +527,12 @@ body {
   min-width: 240px;
 }
 
+.field-label--narrow {
+  flex: 0 0 auto;
+  min-width: 140px;
+  max-width: 180px;
+}
+
 .field-label span {
   font-size: 11px;
   font-weight: 600;
@@ -538,6 +553,7 @@ body {
   width: 100%;
   transition: border-color 0.2s;
 }
+
 .text-input:focus {
   border-color: var(--accent);
 }
@@ -547,6 +563,19 @@ body {
   color: var(--text-muted);
   margin-top: 4px;
   flex-basis: 100%;
+}
+
+.export-batch-row {
+  flex-basis: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 2px;
+}
+
+.export-batch-hint {
+  font-size: 11px;
+  color: var(--text-muted);
 }
 
 .export-buttons {
@@ -640,7 +669,7 @@ body {
 }
 
 .edit-dialog::backdrop {
-  background: rgba(0,0,0,0.7);
+  background: rgba(0, 0, 0, 0.7);
   backdrop-filter: blur(4px);
 }
 
@@ -763,7 +792,7 @@ body {
 }
 
 .folder-picker-dialog::backdrop {
-  background: rgba(0,0,0,0.7);
+  background: rgba(0, 0, 0, 0.7);
   backdrop-filter: blur(4px);
 }
 
@@ -849,12 +878,12 @@ body {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.45);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
   color: #1a1c2e;
 }
 
 .auto-search-dialog::backdrop {
-  background: rgba(0,0,0,0.7);
+  background: rgba(0, 0, 0, 0.7);
   backdrop-filter: blur(4px);
 }
 
@@ -1047,7 +1076,7 @@ body {
 }
 
 .progress-dialog::backdrop {
-  background: rgba(0,0,0,0.55);
+  background: rgba(0, 0, 0, 0.55);
   backdrop-filter: blur(3px);
 }
 
@@ -1079,21 +1108,24 @@ body {
 
 /* 인디케이터 — 전체 길이를 모를 때 좌우 슬라이드 애니메이션 */
 .progress-bar:indeterminate {
-  background: linear-gradient(
-    90deg,
-    var(--bg3) 0%,
-    var(--bg3) 30%,
-    var(--accent) 50%,
-    var(--bg3) 70%,
-    var(--bg3) 100%
-  );
+  background: linear-gradient(90deg,
+      var(--bg3) 0%,
+      var(--bg3) 30%,
+      var(--accent) 50%,
+      var(--bg3) 70%,
+      var(--bg3) 100%);
   background-size: 200% 100%;
   animation: progress-slide 1.4s linear infinite;
 }
 
 @keyframes progress-slide {
-  from { background-position: 100% 0; }
-  to   { background-position: -100% 0; }
+  from {
+    background-position: 100% 0;
+  }
+
+  to {
+    background-position: -100% 0;
+  }
 }
 
 .progress-status {
@@ -1121,7 +1153,7 @@ body {
 }
 
 .subfolder-select-dialog::backdrop {
-  background: rgba(0,0,0,0.55);
+  background: rgba(0, 0, 0, 0.55);
   backdrop-filter: blur(3px);
 }
 
@@ -1186,7 +1218,7 @@ body {
 }
 
 .cleanup-confirm-dialog::backdrop {
-  background: rgba(0,0,0,0.7);
+  background: rgba(0, 0, 0, 0.7);
   backdrop-filter: blur(4px);
 }
 

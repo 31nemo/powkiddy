@@ -1,11 +1,13 @@
 <!DOCTYPE html>
 <html lang="ko">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Powkiddy Playlist Editor</title>
   <link rel="stylesheet" href="src/style.css" />
 </head>
+
 <body>
 
   <header class="app-header">
@@ -25,7 +27,8 @@
           <div class="dropzone-icon">📄</div>
           <p class="dropzone-text">
             <strong>클릭하거나 파일을 드래그하세요</strong><br />
-            <span class="dropzone-sub">Powkiddy <code>game_strings_ko.xml</code> 또는 RetroArch <code>.lpl</code> 파일</span>
+            <span class="dropzone-sub">Powkiddy <code>game_strings_ko.xml</code> 또는 RetroArch <code>.lpl</code>
+              파일</span>
           </p>
         </label>
         <input type="file" id="fileInput" accept=".xml,.lpl" hidden />
@@ -63,17 +66,14 @@
         <button id="moveUpBtn" class="btn" title="위로 이동">↑ 위로</button>
         <button id="moveDownBtn" class="btn" title="아래로 이동">↓ 아래로</button>
         <button id="sortBtn" class="btn" title="가나다순 정렬">가나다 정렬</button>
+        <button id="autoFillFilenameBtn" class="btn" title="LPL/XML 파일을 읽어 동일한 ROM 파일명의 표시 이름을 자동 대체합니다">📋 표시이름 자동
+          검색</button>
+        <input type="file" id="autoFillFileInput" accept=".xml,.lpl" hidden />
         <button id="autoSearchBtn" class="btn" title="폴더를 검색해 이미지 자동 적용">🔍 이미지 자동 검색</button>
         <button id="cleanupThumbBtn" class="btn" title="썸네일 폴더에서 사용되지 않는 이미지 삭제">🗑 이미지 자동 정리</button>
       </div>
       <div class="toolbar-right">
-        <input
-          type="search"
-          id="searchInput"
-          class="search-input"
-          placeholder="🔍 게임 검색..."
-          aria-label="게임 검색"
-        />
+        <input type="search" id="searchInput" class="search-input" placeholder="🔍 게임 검색..." aria-label="게임 검색" />
         <span id="gameCount" class="game-count">총 0개 게임</span>
       </div>
     </section>
@@ -115,32 +115,28 @@
       <div id="exportOptions" class="export-options" style="display:none">
         <label class="field-label">
           <span>ROM 기본 경로</span>
-          <input
-            type="text"
-            id="romBasePath"
-            class="text-input"
-            placeholder="예: /sdcard/settings/retroarch/roms/Nintendo - Nintendo Entertainment System (Add-Korea)/"
-          />
+          <input type="text" id="romBasePath" class="text-input"
+            placeholder="예: /sdcard/settings/retroarch/roms/Nintendo - Nintendo Entertainment System (Add-Korea)/" />
         </label>
         <label class="field-label">
           <span>코어 경로</span>
-          <input
-            type="text"
-            id="corePath"
-            class="text-input"
-            placeholder="예: /sdcard/settings/retroarch/cores/fceumm_libretro.so"
-          />
+          <input type="text" id="corePath" class="text-input"
+            placeholder="예: /sdcard/settings/retroarch/cores/fceumm_libretro.so" />
         </label>
         <label class="field-label">
           <span>DB 이름</span>
-          <input
-            type="text"
-            id="dbName"
-            class="text-input"
-            placeholder="예: Nintendo - Nintendo Entertainment System (Add-Korea).lol"
-          />
+          <input type="text" id="dbName" class="text-input"
+            placeholder="예: Nintendo - Nintendo Entertainment System (Add-Korea).lol" />
+        </label>
+        <label class="field-label field-label--narrow">
+          <span>ROM 확장자 <small>(일괄 변경)</small></span>
+          <input type="text" id="romExt" class="text-input" placeholder="예: .nes  .sfc  .zip" />
         </label>
         <p class="export-hint">💡 .lpl 파일을 불러오면 위 값이 자동으로 채워집니다.</p>
+        <div class="export-batch-row">
+          <button id="batchUpdatePathsBtn" class="btn secondary">🔄 경로 일괄 수정</button>
+          <span class="export-batch-hint">빈 칸인 항목은 수정하지 않습니다</span>
+        </div>
       </div>
 
       <div class="export-buttons">
@@ -174,12 +170,14 @@
       <summary>💡 사용 방법</summary>
       <div class="help-content">
         <ul>
-          <li><strong>불러오기:</strong> Powkiddy의 <code>settings/res/[시스템]/string/game_strings_ko.xml</code> 또는 RetroArch의 <code>.lpl</code> 파일을 드래그하거나 클릭하여 불러옵니다.</li>
+          <li><strong>불러오기:</strong> Powkiddy의 <code>settings/res/[시스템]/string/game_strings_ko.xml</code> 또는 RetroArch의
+            <code>.lpl</code> 파일을 드래그하거나 클릭하여 불러옵니다.</li>
           <li><strong>편집:</strong> 행을 클릭하여 선택하고, ✏️ 버튼으로 이름/경로를 수정합니다. Ctrl+클릭으로 다중 선택, Shift+클릭으로 범위 선택이 가능합니다.</li>
           <li><strong>순서 변경:</strong> 게임을 선택 후 ↑/↓ 버튼으로 순서를 바꿉니다.</li>
           <li><strong>가나다 정렬:</strong> 숫자 → 영문 → 한글 순으로 표시 이름을 정렬합니다.</li>
           <li><strong>🖼️ 이미지 확인:</strong> 체크하면 썸네일 폴더를 선택합니다. ROM 파일명 또는 표시 이름과 같은 이름의 이미지를 목록에 표시합니다.</li>
-          <li><strong>🔍 이미지 자동 검색:</strong> 폴더를 선택하면 하위 폴더까지 재귀 검색하여 표시 이름과 일치하는 PNG 파일을 자동으로 적용합니다. 폴더 추가 시 하위 폴더를 여러 개 동시에 선택할 수 있습니다.</li>
+          <li><strong>🔍 이미지 자동 검색:</strong> 폴더를 선택하면 하위 폴더까지 재귀 검색하여 표시 이름과 일치하는 PNG 파일을 자동으로 적용합니다. 폴더 추가 시 하위 폴더를 여러
+            개 동시에 선택할 수 있습니다.</li>
           <li><strong>🗑 이미지 자동 정리:</strong> 썸네일 폴더에서 게임 목록의 표시 이름 또는 ROM 파일명과 일치하지 않는 이미지를 찾아 삭제합니다.</li>
           <li><strong>내보내기:</strong> Powkiddy XML은 장치의 <code>string/</code> 폴더에, RetroArch .lpl은 플레이리스트 폴더에 넣으세요.</li>
         </ul>
@@ -194,4 +192,5 @@
 
   <script src="src/app.js"></script>
 </body>
+
 </html>

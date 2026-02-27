@@ -81,12 +81,12 @@ function parseRetroArchLpl(text) {
 
   for (let i = 0; i < entryCount; i++) {
     const base = i * LINES_PER_ENTRY;
-    const romPath  = lines[base + 0] || '';
-    const label    = lines[base + 1] || '';
+    const romPath = lines[base + 0] || '';
+    const label = lines[base + 1] || '';
     const corePath = lines[base + 2] || '';
-    const crc32    = lines[base + 3] || 'DETECT';
-    const field5   = lines[base + 4] || 'DETECT';
-    const dbName   = lines[base + 5] || '';
+    const crc32 = lines[base + 3] || 'DETECT';
+    const field5 = lines[base + 4] || 'DETECT';
+    const dbName = lines[base + 5] || '';
 
     games.push({
       name: label,
@@ -100,9 +100,9 @@ function parseRetroArchLpl(text) {
   }
 
   const meta = {
-    romBasePath: games.length ? extractDirPath(games[0]._romPath) : '',
-    corePath:    games.length ? games[0]._corePath : '',
-    dbName:      games.length ? games[0]._dbName   : '',
+    romBasePath: games.length ? extractRomBasePath(games[0]._romPath) : '',
+    corePath: games.length ? games[0]._corePath : '',
+    dbName: games.length ? games[0]._dbName : '',
   };
 
   return { games, meta };
@@ -118,10 +118,10 @@ function exportRetroArchLpl(games, meta = {}) {
         ? romBasePath.replace(/\/$/, '') + '/' + game.gamePath
         : game.gamePath;
 
-    const core   = game._corePath || corePath || 'DETECT';
-    const crc32  = game._crc32  || 'DETECT';
+    const core = game._corePath || corePath || 'DETECT';
+    const crc32 = game._crc32 || 'DETECT';
     const field5 = game._field5 || 'DETECT';
-    const db     = game._dbName || dbName || '';
+    const db = game._dbName || dbName || '';
 
     return [romPath, game.name, core, crc32, field5, db].join('\n');
   }).join('\n') + '\n';
@@ -135,6 +135,19 @@ function extractDirPath(path) {
   const parts = path.split('/');
   parts.pop();
   return parts.join('/') + '/';
+}
+
+// /roms/ 이후 첫 번째 세그먼트까지만 추출 (ROM 기본 경로용)
+// 예) /sdcard/roms/NES/games/Mario.nes → /sdcard/roms/NES/
+// 예) /sdcard/roms/NES/Mario.nes       → /sdcard/roms/NES/
+// 예) /sdcard/roms/Mario.nes           → /sdcard/roms/
+function extractRomBasePath(romPath) {
+  const romsIdx = romPath.indexOf('/roms/');
+  if (romsIdx === -1) return extractDirPath(romPath);
+  const afterRoms = romPath.slice(romsIdx + '/roms/'.length);
+  const firstSlash = afterRoms.indexOf('/');
+  if (firstSlash === -1) return romPath.slice(0, romsIdx + '/roms/'.length);
+  return romPath.slice(0, romsIdx + '/roms/'.length + firstSlash + 1);
 }
 
 // ─── 상태 ─────────────────────────────────────────────────────────────────────
@@ -181,6 +194,10 @@ const exportOptionsEl = document.getElementById('exportOptions');
 const statusEl = document.getElementById('status');
 const thumbCheckEl = document.getElementById('thumbCheck');
 const thumbInfoEl = document.getElementById('thumbInfo');
+const autoFillFilenameBtn = document.getElementById('autoFillFilenameBtn');
+const autoFillFileInput = document.getElementById('autoFillFileInput');
+const batchUpdatePathsBtn = document.getElementById('batchUpdatePathsBtn');
+const romExtEl = document.getElementById('romExt');
 
 // ─── 초기화 ───────────────────────────────────────────────────────────────────
 
@@ -241,6 +258,19 @@ function init() {
   cleanupThumbBtn.addEventListener('click', cleanupThumbs);
   exportPowkiddyBtn.addEventListener('click', () => doExport('powkiddy'));
   exportRetroArchBtn.addEventListener('click', () => doExport('retroarch'));
+  batchUpdatePathsBtn.addEventListener('click', batchUpdatePaths);
+
+  autoFillFilenameBtn.addEventListener('click', () => {
+    if (state.games.length === 0) {
+      setStatus('⚠️ 먼저 ROM 폴더를 불러오세요', 'warn');
+      return;
+    }
+    autoFillFileInput.click();
+  });
+  autoFillFileInput.addEventListener('change', e => {
+    if (e.target.files.length) autoFillFilenames(e.target.files[0]);
+    e.target.value = '';
+  });
 
   renderList();
 }
@@ -276,6 +306,50 @@ function handleFile(file) {
       state.searchText = '';
       searchEl.value = '';
       renderList();
+    } catch (err) {
+      setStatus('❌ ' + err.message, 'error');
+    }
+  };
+  reader.readAsText(file, 'utf-8');
+}
+
+// ─── 파일명 자동 입력 ────────────────────────────────────────────────────────
+
+function autoFillFilenames(file) {
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const text = e.target.result;
+      let sourceGames;
+
+      if (file.name.endsWith('.lpl')) {
+        ({ games: sourceGames } = parseRetroArchLpl(text));
+      } else if (file.name.endsWith('.xml')) {
+        ({ games: sourceGames } = parsePowkiddyXml(text));
+      } else {
+        setStatus('❌ .lpl 또는 .xml 파일만 지원합니다', 'error');
+        return;
+      }
+
+      // stem(확장자 제거, 소문자) → 표시 이름 매핑
+      const stemMap = new Map();
+      for (const g of sourceGames) {
+        const stem = g.gamePath.replace(/\.[^.]+$/, '').toLowerCase();
+        stemMap.set(stem, g.name);
+      }
+
+      let matched = 0;
+      for (const game of state.games) {
+        const stem = game.gamePath.replace(/\.[^.]+$/, '').toLowerCase();
+        if (stemMap.has(stem)) {
+          game.name = stemMap.get(stem);
+          matched++;
+        }
+      }
+
+      renderList();
+      const total = state.games.length;
+      setStatus(`✅ ${matched}개 / ${total}개 표시 이름 업데이트됨`, 'success');
     } catch (err) {
       setStatus('❌ ' + err.message, 'error');
     }
@@ -321,6 +395,10 @@ async function pickFolder() {
   }));
   state.importedFrom = null;
   state.retroarchMeta = {};
+  // DB 이름이 비어있으면 롬 폴더명으로 자동 채우기
+  if (dbNameEl && !dbNameEl.value.trim()) {
+    dbNameEl.value = dirHandle.name + '.lpl';
+  }
   state.selectedRows.clear();
   state.searchText = '';
   searchEl.value = '';
@@ -532,9 +610,9 @@ function renderList() {
     const thumbUrl = getThumbUrl(game);
     const thumbCell = hasThumb
       ? `<td class="col-thumb">${thumbUrl
-          ? `<img class="thumb-img" src="${thumbUrl}" alt="${escHtml(game.name)}" title="${escHtml(game.name)}" style="cursor:pointer;" />`
-          : `<button class="btn-icon thumb-upload-btn" title="이미지 업로드">📷</button>`
-        }</td>`
+        ? `<img class="thumb-img" src="${thumbUrl}" alt="${escHtml(game.name)}" title="${escHtml(game.name)}" style="cursor:pointer;" />`
+        : `<button class="btn-icon thumb-upload-btn" title="이미지 업로드">📷</button>`
+      }</td>`
       : '';
 
     tr.innerHTML = `
@@ -624,17 +702,27 @@ function openEditDialog(idx) {
   // ROM 기본 경로 / 코어 경로 (게임별 또는 전역 설정)
   const gameRomBase = game._romPath ? extractDirPath(game._romPath) : '';
   const globalRomBase = romBasePathEl ? romBasePathEl.value.trim() : '';
-  const romBaseVal = gameRomBase || globalRomBase;
-  const coreVal = game._corePath || (corePathEl ? corePathEl.value.trim() : '');
+  let romBaseVal = gameRomBase || globalRomBase;
+  let coreVal = game._corePath || (corePathEl ? corePathEl.value.trim() : '');
+
+  // 생성 모드에서 값이 비어있으면 첫 번째 게임의 값으로 채우기
+  if (state.importedFrom === null && idx > 0 && state.games.length > 0) {
+    const firstGame = state.games[0];
+    if (!romBaseVal) romBaseVal = firstGame._romPath ? extractRomBasePath(firstGame._romPath) : '';
+    if (!coreVal) coreVal = firstGame._corePath || '';
+  }
+
+  const globalDbName = dbNameEl ? dbNameEl.value.trim() : '';
+  const dbNameVal = game._dbName || globalDbName;
 
   const thumbSection = hasThumbFeature ? `
     <div class="thumb-edit-row">
       <span class="field-label-text">썸네일</span>
       <div class="thumb-edit-zone" id="thumbEditZone">
         ${currentThumbUrl
-          ? `<img class="thumb-edit-preview" id="thumbEditPreview" src="${currentThumbUrl}" alt="" />`
-          : `<div class="thumb-edit-placeholder" id="thumbEditPreview"><span>이미지를 드래그하거나<br>클릭하여 선택</span></div>`
-        }
+      ? `<img class="thumb-edit-preview" id="thumbEditPreview" src="${currentThumbUrl}" alt="" />`
+      : `<div class="thumb-edit-placeholder" id="thumbEditPreview"><span>이미지를 드래그하거나<br>클릭하여 선택</span></div>`
+    }
       </div>
       <div class="thumb-img-info" id="thumbImgInfo"></div>
     </div>` : '';
@@ -661,6 +749,11 @@ function openEditDialog(idx) {
         <span>코어 경로 <small>(비워두면 전역 설정 사용)</small></span>
         <input type="text" name="corePath" value="${escHtml(coreVal)}" autocomplete="off"
                placeholder="${escHtml(corePathEl ? corePathEl.value.trim() : '') || '예: /sdcard/.../fceumm_libretro.so'}" />
+      </label>
+      <label>
+        <span>LPL 이름 <small>(비워두면 전역 설정 사용)</small></span>
+        <input type="text" name="dbName" value="${escHtml(dbNameVal)}" autocomplete="off"
+               placeholder="${escHtml(globalDbName) || '예: Nintendo - NES.lpl'}" />
       </label>
       ${thumbSection}
       <div class="dialog-actions">
@@ -719,20 +812,22 @@ function openEditDialog(idx) {
 
   dialog.querySelector('#cancelEdit').addEventListener('click', () => dialog.close());
   dialog.querySelector('form').addEventListener('submit', async () => {
-    const nameInput    = dialog.querySelector('[name="name"]').value.trim();
-    const pathInput    = dialog.querySelector('[name="gamePath"]').value.trim();
+    const nameInput = dialog.querySelector('[name="name"]').value.trim();
+    const pathInput = dialog.querySelector('[name="gamePath"]').value.trim();
     const romBaseInput = dialog.querySelector('[name="romBase"]').value.trim();
-    const coreInput    = dialog.querySelector('[name="corePath"]').value.trim();
+    const coreInput = dialog.querySelector('[name="corePath"]').value.trim();
+    const dbNameInput = dialog.querySelector('[name="dbName"]').value.trim();
     if (!nameInput || !pathInput) return;
 
     const updated = { ...game, name: nameInput, gamePath: pathInput };
-    // 게임별 ROM 경로 / 코어 경로 갱신
+    // 게임별 ROM 경로 / 코어 경로 / LPL 이름 갱신
     if (romBaseInput) {
       updated._romPath = romBaseInput.replace(/\/$/, '') + '/' + pathInput;
     } else {
       delete updated._romPath; // 전역 설정 사용
     }
     updated._corePath = coreInput || undefined;
+    updated._dbName = dbNameInput || undefined;
 
     state.games[idx] = updated;
 
@@ -768,12 +863,12 @@ async function loadThumbImgInfo(dialog, dataUrl) {
 
   // 확장자
   const mime = dataUrl.split(';')[0].split(':')[1] || 'image/unknown';
-  const ext  = mime.split('/')[1].toUpperCase();
+  const ext = mime.split('/')[1].toUpperCase();
 
   // 크기 (Image 로드)
   const { width, height } = await new Promise(res => {
     const img = new Image();
-    img.onload  = () => res({ width: img.naturalWidth, height: img.naturalHeight });
+    img.onload = () => res({ width: img.naturalWidth, height: img.naturalHeight });
     img.onerror = () => res({ width: 0, height: 0 });
     img.src = dataUrl;
   });
@@ -782,19 +877,90 @@ async function loadThumbImgInfo(dialog, dataUrl) {
   let bppText = '';
   if (ext === 'PNG') {
     try {
-      const b64  = dataUrl.split(',')[1];
+      const b64 = dataUrl.split(',')[1];
       const head = atob(b64.substring(0, 48));
       if (head.charCodeAt(1) === 0x50) { // PNG magic
-        const bitDepth  = head.charCodeAt(24);
+        const bitDepth = head.charCodeAt(24);
         const colorType = head.charCodeAt(25);
-        const channels  = { 0:1, 2:3, 3:1, 4:2, 6:4 }[colorType] ?? 1;
+        const channels = { 0: 1, 2: 3, 3: 1, 4: 2, 6: 4 }[colorType] ?? 1;
         bppText = `${bitDepth * channels}bpp`;
       }
-    } catch {}
+    } catch { }
   }
 
   infoEl.textContent = [ext, width && height ? `${width}×${height}` : '', bppText]
     .filter(Boolean).join('  ·  ');
+}
+
+// ─── 경로 일괄 수정 ──────────────────────────────────────────────────────────
+
+function batchUpdatePaths() {
+  if (state.games.length === 0) {
+    setStatus('⚠️ 게임 목록이 비어 있습니다.', 'warn');
+    return;
+  }
+
+  const newRomBase = romBasePathEl ? romBasePathEl.value.trim() : '';
+  const newCorePath = corePathEl ? corePathEl.value.trim() : '';
+  const newDbName = dbNameEl ? dbNameEl.value.trim() : '';
+  let newExt = romExtEl ? romExtEl.value.trim() : '';
+
+  // 점(.) 없으면 자동 추가
+  if (newExt && !newExt.startsWith('.')) newExt = '.' + newExt;
+
+  if (!newRomBase && !newCorePath && !newDbName && !newExt) {
+    setStatus('⚠️ 수정할 값이 없습니다. ROM 기본 경로, 코어 경로, DB 이름, ROM 확장자 중 하나 이상을 입력하세요.', 'warn');
+    return;
+  }
+
+  const count = state.games.length;
+  for (const game of state.games) {
+    // 확장자 교체: gamePath 의 확장자를 맨 먼저 수정 (이후 _romPath 재함)
+    if (newExt) {
+      game.gamePath = game.gamePath.replace(/\.[^./]+$/, '') + newExt;
+    }
+
+    if (newRomBase) {
+      // 기존 _romPath 에서 /roms/{path4}/ 이후의 하위 경로(subDir)를 추출해 유지
+      // 예) /sdcard/roms/NES/games/Mario.nes → subDir = 'games/'
+      // 예) /sdcard/roms/NES/Mario.nes       → subDir = ''
+      const currentPath = game._romPath || '';
+      let subDir = '';
+      const romsIdx = currentPath.indexOf('/roms/');
+      if (romsIdx !== -1) {
+        const afterRoms = currentPath.slice(romsIdx + '/roms/'.length); // "{path4}/..."
+        const firstSlash = afterRoms.indexOf('/');
+        if (firstSlash !== -1) {
+          const rest = afterRoms.slice(firstSlash + 1); // "{path5}/{filename}" or "{filename}"
+          const lastSlash = rest.lastIndexOf('/');
+          if (lastSlash !== -1) {
+            subDir = rest.slice(0, lastSlash + 1); // "path5/"
+          }
+        }
+      }
+      const filename = game.gamePath || extractFilename(currentPath);
+      game._romPath = newRomBase.replace(/\/$/, '') + '/' + subDir + filename;
+    } else if (newExt && game._romPath) {
+      // 기본 경로 변경 없이 확장자만 교체
+      const dir = extractDirPath(game._romPath);
+      game._romPath = dir + game.gamePath;
+    }
+    if (newCorePath) {
+      game._corePath = newCorePath;
+    }
+    if (newDbName) {
+      game._dbName = newDbName;
+    }
+  }
+
+  const updated = [
+    newRomBase && 'ROM 경로',
+    newExt && `확장자(${newExt})`,
+    newCorePath && '코어 경로',
+    newDbName && 'DB 이름',
+  ].filter(Boolean).join(', ');
+  setStatus(`✅ ${count}개 게임의 ${updated}을(를) 일괄 수정했습니다.`, 'success');
+  renderList();
 }
 
 // ─── 게임 추가 ────────────────────────────────────────────────────────────────
@@ -879,7 +1045,7 @@ function createProgressDialog(title) {
   document.body.appendChild(d);
   d.showModal();
   return {
-    setTitle(t)  { d.querySelector('#progTitle').textContent = t; },
+    setTitle(t) { d.querySelector('#progTitle').textContent = t; },
     setIndeterminate() {
       const b = d.querySelector('#progBar');
       b.removeAttribute('value');
@@ -887,11 +1053,11 @@ function createProgressDialog(title) {
     },
     setProgress(value, max) {
       const b = d.querySelector('#progBar');
-      b.max  = max;
+      b.max = max;
       b.value = value;
     },
     setStatus(text) { d.querySelector('#progStatus').textContent = text; },
-    close() { try { d.close(); } catch {} d.remove(); },
+    close() { try { d.close(); } catch { } d.remove(); },
   };
 }
 
@@ -998,7 +1164,7 @@ function pickSearchFolders() {
             if (rel && rel.length > 0) {
               displayPath = lastHandle.name + '/' + rel.join('/');
             }
-          } catch {}
+          } catch { }
         }
         lastHandle = handle;
 
@@ -1213,9 +1379,9 @@ async function showAutoSearchConfirm(matches) {
             <input type="checkbox" name="match" data-i="${i}" checked />
             <span class="auto-search-name">${escHtml(m.game.name)}</span>
             ${multi
-              ? `<span class="candidate-count-badge">${m.candidates.length}개 이미지</span>`
-              : `<span class="auto-search-path" title="${escHtml(m.candidates[0].relativePath)}">${escHtml(m.candidates[0].relativePath)}</span>`
-            }
+          ? `<span class="candidate-count-badge">${m.candidates.length}개 이미지</span>`
+          : `<span class="auto-search-path" title="${escHtml(m.candidates[0].relativePath)}">${escHtml(m.candidates[0].relativePath)}</span>`
+        }
           </label>
           ${candidatesHtml}
         </li>`;
@@ -1245,11 +1411,11 @@ async function showAutoSearchConfirm(matches) {
       </div>
     `;
 
-    const selectAllCb    = dialog.querySelector('#selectAllMatches');
-    const filterBoxarts  = dialog.querySelector('#filterBoxarts');
-    const filterSnaps    = dialog.querySelector('#filterSnaps');
+    const selectAllCb = dialog.querySelector('#selectAllMatches');
+    const filterBoxarts = dialog.querySelector('#filterBoxarts');
+    const filterSnaps = dialog.querySelector('#filterSnaps');
     const selectedCountEl = dialog.querySelector('#selectedCount');
-    const getCheckboxes  = () => [...dialog.querySelectorAll('[name="match"]')];
+    const getCheckboxes = () => [...dialog.querySelectorAll('[name="match"]')];
 
     function visibleCheckboxes() {
       return getCheckboxes().filter(cb =>
@@ -1270,7 +1436,7 @@ async function showAutoSearchConfirm(matches) {
       const snapOn = filterSnaps.checked;
       if (!boxOn && !snapOn) return true;
       return (boxOn && path.includes('Named_Boxarts'))
-          || (snapOn && path.includes('Named_Snaps'));
+        || (snapOn && path.includes('Named_Snaps'));
     }
 
     function applyFilter() {
@@ -1504,10 +1670,27 @@ function doExport(format) {
     const meta = {
       ...state.retroarchMeta,
       romBasePath: romBasePathEl.value.trim() || state.retroarchMeta.romBasePath || '',
-      corePath:    corePathEl.value.trim()    || state.retroarchMeta.corePath    || '',
-      dbName:      dbNameEl.value.trim()      || state.retroarchMeta.dbName      || '',
+      corePath: corePathEl.value.trim() || state.retroarchMeta.corePath || '',
+      dbName: dbNameEl.value.trim() || state.retroarchMeta.dbName || '',
     };
-    content = exportRetroArchLpl(state.games, meta);
+
+    // 첫 번째 게임의 경로를 기준으로, 빈 _romPath/_corePath 채우기
+    const firstGame = state.games[0];
+    const firstRomDir = firstGame?._romPath ? extractDirPath(firstGame._romPath) : '';
+    const firstCore = firstGame?._corePath || '';
+    const exportGames = state.games.map(game => {
+      if (game._romPath && game._corePath) return game;
+      const g = { ...game };
+      if (!g._romPath && firstRomDir) {
+        g._romPath = firstRomDir.replace(/\/$/, '') + '/' + game.gamePath;
+      }
+      if (!g._corePath && firstCore) {
+        g._corePath = firstCore;
+      }
+      return g;
+    });
+
+    content = exportRetroArchLpl(exportGames, meta);
     filename = 'playlist.lpl';
     mimeType = 'text/plain';
   }
