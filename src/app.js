@@ -1039,10 +1039,14 @@ function addNumbers() {
     setStatus('⚠️ 게임 목록이 비어 있습니다.', 'warn');
     return;
   }
-  state.games.forEach((game, i) => {
-    game.name = `${i + 1}.${game.name}`;
-  });
-  setStatus(`✅ ${state.games.length}개 게임에 번호를 추가했습니다.`, 'success');
+  const allNumbered = state.games.every(g => /^\d+\./.test(g.name));
+  if (allNumbered) {
+    state.games.forEach(game => { game.name = game.name.replace(/^\d+\./, ''); });
+    setStatus(`✅ ${state.games.length}개 게임의 번호를 제거했습니다.`, 'success');
+  } else {
+    state.games.forEach((game, i) => { game.name = `${i + 1}.${game.name}`; });
+    setStatus(`✅ ${state.games.length}개 게임에 번호를 추가했습니다.`, 'success');
+  }
   renderList();
 }
 
