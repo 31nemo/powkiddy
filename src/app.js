@@ -5,6 +5,7 @@ function parsePowkiddyXml(xmlText) {
   const cleaned = xmlText
     .replace(/^\ufeff/, '')
     .replace(/^<\?xml[^?]*\?>/, '<?xml version="1.0"?>')
+    .replace(/&(?!amp;|lt;|gt;|quot;|apos;|#)/g, '&amp;')
     .replace(/=([^"'\s][^\s"'=><\/]*)/g, '="$1"');
 
   const parser = new DOMParser();
