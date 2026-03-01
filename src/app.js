@@ -56,11 +56,9 @@ function exportPowkiddyXml(games) {
 
 function escapeXml(str) {
   return String(str)
-    .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;');
+    .replace(/"/g, '&quot;');
 }
 
 // ─── RetroArch .lpl (6줄 텍스트 포맷) ───────────────────────────────────────
@@ -183,6 +181,7 @@ const deleteBtn = document.getElementById('deleteBtn');
 const moveUpBtn = document.getElementById('moveUpBtn');
 const moveDownBtn = document.getElementById('moveDownBtn');
 const sortBtn = document.getElementById('sortBtn');
+const addNumberBtn = document.getElementById('addNumberBtn');
 const autoSearchBtn = document.getElementById('autoSearchBtn');
 const cleanupThumbBtn = document.getElementById('cleanupThumbBtn');
 const exportPowkiddyBtn = document.getElementById('exportPowkiddy');
@@ -254,6 +253,7 @@ function init() {
   moveUpBtn.addEventListener('click', () => moveSelected(-1));
   moveDownBtn.addEventListener('click', () => moveSelected(1));
   sortBtn.addEventListener('click', sortByName);
+  addNumberBtn.addEventListener('click', addNumbers);
   autoSearchBtn.addEventListener('click', autoSearchImages);
   cleanupThumbBtn.addEventListener('click', cleanupThumbs);
   exportPowkiddyBtn.addEventListener('click', () => doExport('powkiddy'));
@@ -1029,6 +1029,20 @@ function sortByName() {
   });
   state.selectedRows.clear();
   setStatus('✅ 정렬 완료 (숫자 → 영문 → 한글)', 'success');
+  renderList();
+}
+
+// ─── 번호 넣기 ────────────────────────────────────────────────────────────────
+
+function addNumbers() {
+  if (state.games.length === 0) {
+    setStatus('⚠️ 게임 목록이 비어 있습니다.', 'warn');
+    return;
+  }
+  state.games.forEach((game, i) => {
+    game.name = `${i + 1}.${game.name}`;
+  });
+  setStatus(`✅ ${state.games.length}개 게임에 번호를 추가했습니다.`, 'success');
   renderList();
 }
 
