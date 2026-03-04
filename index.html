@@ -27,7 +27,7 @@
           <div class="dropzone-icon">📄</div>
           <p class="dropzone-text">
             <strong>클릭하거나 파일을 드래그하세요</strong><br />
-            <span class="dropzone-sub">Powkiddy <code>game_strings_ko.xml</code> 또는 RetroArch <code>.lpl</code> 파일</span>
+            <span class="dropzone-sub">Powkiddy <code>game_strings_ko.xml</code>, RetroArch <code>.lpl</code>, 또는 <code>gamelist.xml</code></span>
           </p>
         </label>
         <input type="file" id="fileInput" accept=".xml,.lpl" hidden />
@@ -158,6 +158,14 @@
           <button id="exportRetroArch" class="btn secondary">내보내기</button>
           <button id="exportImgRetroArch" class="btn" title="이미지를 표시이름.png 로 폴더에 저장">🖼️ 이미지 내보내기</button>
         </div>
+        <div class="export-card">
+          <div class="export-card-icon">🗂️</div>
+          <div class="export-card-info">
+            <strong>EmulationStation gamelist.xml</strong>
+            <span>gamelist.xml</span>
+          </div>
+          <button id="exportGamelist" class="btn">내보내기</button>
+        </div>
       </div>
     </section>
 
@@ -172,8 +180,7 @@
       <summary>💡 사용 방법</summary>
       <div class="help-content">
         <ul>
-          <li><strong>불러오기:</strong> Powkiddy의 <code>settings/res/[시스템]/string/game_strings_ko.xml</code> 또는 RetroArch의
-            <code>.lpl</code> 파일을 드래그하거나 클릭하여 불러옵니다.</li>
+          <li><strong>불러오기:</strong> Powkiddy의 <code>settings/res/[시스템]/string/game_strings_ko.xml</code>, RetroArch의 <code>.lpl</code>, 또는 EmulationStation의 <code>gamelist.xml</code> 파일을 드래그하거나 클릭하여 불러옵니다.</li>
           <li><strong>편집:</strong> 행을 클릭하여 선택하고, ✏️ 버튼으로 이름/경로를 수정합니다. Ctrl+클릭으로 다중 선택, Shift+클릭으로 범위 선택이 가능합니다.</li>
           <li><strong>순서 변경:</strong> 게임을 선택 후 ↑/↓ 버튼으로 순서를 바꿉니다.</li>
           <li><strong>가나다 정렬:</strong> 숫자 → 영문 → 한글 순으로 표시 이름을 정렬합니다.</li>

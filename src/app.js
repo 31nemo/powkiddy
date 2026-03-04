@@ -57,9 +57,64 @@ function exportPowkiddyXml(games) {
 
 function escapeXml(str) {
   return String(str)
+    .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+// ─── EmulationStation gamelist.xml ───────────────────────────────────────────
+
+function parseGamelistXml(xmlText) {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(xmlText, 'application/xml');
+  const parseError = doc.querySelector('parsererror');
+  if (parseError) throw new Error('XML 파싱 오류: ' + parseError.textContent);
+  const root = doc.querySelector('gameList');
+  if (!root) throw new Error('gameList 루트 엘리먼트를 찾을 수 없습니다.');
+
+  const serializer = new XMLSerializer();
+  const HANDLED = new Set(['path', 'name', 'image']);
+  const games = [];
+  for (const game of root.querySelectorAll('game')) {
+    const path = game.querySelector('path')?.textContent?.trim() || '';
+    const name = game.querySelector('name')?.textContent?.trim() || '';
+    const image = game.querySelector('image')?.textContent?.trim() || '';
+    const gamePath = path.replace(/^\.\//, '');
+    if (!gamePath) continue;
+
+    // path/name/image 외 나머지 태그를 직렬화해서 보존
+    const extraLines = [];
+    for (const child of game.children) {
+      if (!HANDLED.has(child.tagName.toLowerCase())) {
+        const serialized = serializer.serializeToString(child).replace(/ xmlns="[^"]*"/g, '');
+        extraLines.push('    ' + serialized);
+      }
+    }
+
+    games.push({
+      name: name || gamePath.replace(/\.[^.]+$/, ''),
+      gamePath,
+      _imagePath: image,
+      _extraXml: extraLines.length ? extraLines.join('\n') + '\n' : '',
+    });
+  }
+  return { games };
+}
+
+function exportGamelistXml(games) {
+  let xml = '<?xml version="1.0"?>\n<gameList>\n';
+  for (const game of games) {
+    const imagePath = escapeXml(game._imagePath || `./images/${game.gamePath.replace(/\.[^.]+$/, '')}.png`);
+    xml += `  <game>\n`;
+    xml += `    <path>./${escapeXml(game.gamePath)}</path>\n`;
+    xml += `    <name>${escapeXml(game.name)}</name>\n`;
+    xml += `    <image>${imagePath}</image>\n`;
+    if (game._extraXml) xml += game._extraXml;
+    xml += `  </game>\n`;
+  }
+  xml += '</gameList>\n';
+  return xml;
 }
 
 // ─── RetroArch .lpl (6줄 텍스트 포맷) ───────────────────────────────────────
@@ -154,7 +209,7 @@ function extractRomBasePath(romPath) {
 let state = {
   /** @type {Array<{name: string, gamePath: string}>} */
   games: [],
-  /** @type {'powkiddy' | 'retroarch'} */
+  /** @type {'powkiddy' | 'retroarch' | 'gamelist' | null} */
   importedFrom: null,
   /** @type {object} */
   retroarchMeta: {},
@@ -192,6 +247,7 @@ const exportPowkiddyBtn = document.getElementById('exportPowkiddy');
 const exportRetroArchBtn = document.getElementById('exportRetroArch');
 const exportImgPowkiddyBtn = document.getElementById('exportImgPowkiddy');
 const exportImgRetroArchBtn = document.getElementById('exportImgRetroArch');
+const exportGamelistBtn = document.getElementById('exportGamelist');
 const romBasePathEl = document.getElementById('romBasePath');
 const dbNameEl = document.getElementById('dbName');
 const corePathEl = document.getElementById('corePath');
@@ -266,6 +322,7 @@ function init() {
   exportRetroArchBtn.addEventListener('click', () => doExport('retroarch'));
   exportImgPowkiddyBtn.addEventListener('click', () => exportImages('powkiddy'));
   exportImgRetroArchBtn.addEventListener('click', () => exportImages('retroarch'));
+  exportGamelistBtn.addEventListener('click', () => doExport('gamelist'));
   batchUpdatePathsBtn.addEventListener('click', batchUpdatePaths);
 
   autoFillFilenameBtn.addEventListener('click', () => {
@@ -291,6 +348,17 @@ function handleFile(file) {
     const text = e.target.result;
     try {
       if (file.name.endsWith('.xml')) {
+        // detect format by root element
+        const tmpDoc = new DOMParser().parseFromString(text, 'application/xml');
+        const rootTag = tmpDoc.documentElement?.tagName;
+        if (rootTag === 'gameList') {
+          const { games } = parseGamelistXml(text);
+          state.games = games;
+          state.importedFrom = 'gamelist';
+          state.retroarchMeta = {};
+          exportOptionsEl.style.display = 'block';
+          setStatus(`✅ gamelist.xml 로드 완료 - ${games.length}개 게임`, 'success');
+        } else {
         const { games } = parsePowkiddyXml(text);
         state.games = games;
         state.importedFrom = 'powkiddy';
@@ -298,6 +366,7 @@ function handleFile(file) {
         romBasePathEl.value = '/sdcard/game/';
         exportOptionsEl.style.display = 'block';
         setStatus(`✅ Powkiddy XML 로드 완료 - ${games.length}개 게임`, 'success');
+        }
       } else if (file.name.endsWith('.lpl')) {
         const { games, meta } = parseRetroArchLpl(text);
         state.games = games;
@@ -336,7 +405,12 @@ function autoFillFilenames(file) {
       if (file.name.endsWith('.lpl')) {
         ({ games: sourceGames } = parseRetroArchLpl(text));
       } else if (file.name.endsWith('.xml')) {
-        ({ games: sourceGames } = parsePowkiddyXml(text));
+        const tmpDoc = new DOMParser().parseFromString(text, 'application/xml');
+        if (tmpDoc.documentElement?.tagName === 'gameList') {
+          ({ games: sourceGames } = parseGamelistXml(text));
+        } else {
+          ({ games: sourceGames } = parsePowkiddyXml(text));
+        }
       } else {
         setStatus('❌ .lpl 또는 .xml 파일만 지원합니다', 'error');
         return;
@@ -437,6 +511,15 @@ async function loadThumbnailFolder() {
     return;
   }
 
+  // gamelist 모드: images/ 하위 폴더 자동 탐색
+  if (state.importedFrom === 'gamelist') {
+    try {
+      dirHandle = await dirHandle.getDirectoryHandle('images', { create: false });
+    } catch {
+      // images/ 없으면 선택한 폴더 그대로 사용
+    }
+  }
+
   state.thumbDirHandle = dirHandle;
   state.thumbnailMap = new Map();
 
@@ -501,6 +584,28 @@ async function uploadThumb(game) {
 
   const file = await pickImageFile();
   if (!file) return;
+
+  if (state.importedFrom === 'gamelist') {
+    // gamelist 모드: 원본 파일명 그대로 저장, _imagePath 업데이트
+    const fileName = file.name;
+    try {
+      const fileHandle = await state.thumbDirHandle.getFileHandle(fileName, { create: true });
+      const writable = await fileHandle.createWritable();
+      await writable.write(await file.arrayBuffer());
+      await writable.close();
+    } catch (e) {
+      setStatus('❌ 파일 저장 실패: ' + e.message, 'error');
+      return;
+    }
+    game._imagePath = './images/' + fileName;
+    const key = fileName.replace(/\.[^.]+$/, '').toLowerCase();
+    const dataUrl = await fileToDataUrl(file);
+    state.thumbnailMap.set(key, dataUrl);
+    thumbInfoEl.textContent = `✅ ${state.thumbnailMap.size}개 이미지`;
+    setStatus(`✅ ${fileName} 저장 완료`, 'success');
+    renderList();
+    return;
+  }
 
   // PNG로 변환
   let pngDataUrl;
@@ -569,6 +674,10 @@ function toPngDataUrl(file) {
 // ─── 렌더링 ───────────────────────────────────────────────────────────────────
 
 function getThumbUrl(game) {
+  if (state.importedFrom === 'gamelist' && game._imagePath) {
+    const imageBasename = game._imagePath.split('/').pop().replace(/\.[^.]+$/, '').toLowerCase();
+    return state.thumbnailMap.get(imageBasename);
+  }
   const thumbByPath = game.gamePath.replace(/\.[^.]+$/, '').toLowerCase();
   const thumbByName = game.name.toLowerCase();
   const thumbByNameUnderscored = game.name.replace(/[?&/]/g, '_').toLowerCase();
@@ -704,12 +813,11 @@ function rangeSelect(toIdx) {
 
 function openEditDialog(idx) {
   const game = state.games[idx];
-  const hasThumbFeature = state.thumbDirHandle !== null;
-
   // 현재 썸네일 찾기
   const currentThumbUrl = getThumbUrl(game) || null;
 
   let pendingThumbDataUrl = null;
+  let pendingThumbFile = null;
 
   // ROM 기본 경로 / 코어 경로 (게임별 또는 전역 설정)
   const gameRomBase = game._romPath ? extractDirPath(game._romPath) : '';
@@ -727,7 +835,8 @@ function openEditDialog(idx) {
   const globalDbName = dbNameEl ? dbNameEl.value.trim() : '';
   const dbNameVal = game._dbName || globalDbName;
 
-  const thumbSection = hasThumbFeature ? `
+  // 썸네일 영역은 항상 표시 (모든 파일 형식)
+  const thumbSection = `
     <div class="thumb-edit-row">
       <span class="field-label-text">썸네일</span>
       <div class="thumb-edit-zone" id="thumbEditZone">
@@ -737,7 +846,11 @@ function openEditDialog(idx) {
     }
       </div>
       <div class="thumb-img-info" id="thumbImgInfo"></div>
-    </div>` : '';
+    </div>
+    <div class="ss-search-row">
+      <button type="button" class="btn btn-sm" id="ssSearchBtn">🌐 스크린스크레이퍼 검색</button>
+      <span class="ss-search-note">이미지 우클릭 복사 후 Ctrl+V, 또는 위 영역에 드래그</span>
+    </div>`;
 
   const dialog = document.createElement('dialog');
   dialog.className = 'edit-dialog';
@@ -775,13 +888,17 @@ function openEditDialog(idx) {
     </form>
   `;
 
-  if (hasThumbFeature) {
+  // 썸네일 드롭존 & 검색 (모든 모드에서 동작)
+  {
     const zone = dialog.querySelector('#thumbEditZone');
 
     async function applyImageFile(file) {
       if (!file || !file.type.startsWith('image/')) return;
       try {
-        pendingThumbDataUrl = await toPngDataUrl(file);
+        pendingThumbFile = file;
+        pendingThumbDataUrl = state.importedFrom === 'gamelist'
+          ? await fileToDataUrl(file)
+          : await toPngDataUrl(file);
         let preview = zone.querySelector('#thumbEditPreview');
         if (preview.tagName === 'IMG') {
           preview.src = pendingThumbDataUrl;
@@ -793,6 +910,7 @@ function openEditDialog(idx) {
           img.alt = '';
           preview.replaceWith(img);
         }
+        if (currentThumbUrl) loadThumbImgInfo(dialog, pendingThumbDataUrl);
       } catch (e) {
         setStatus('❌ 이미지 변환 실패: ' + e.message, 'error');
       }
@@ -802,7 +920,6 @@ function openEditDialog(idx) {
       const file = await pickImageFile();
       applyImageFile(file);
     });
-
     zone.addEventListener('dragover', e => {
       e.preventDefault();
       zone.classList.add('drag-over');
@@ -810,15 +927,49 @@ function openEditDialog(idx) {
     zone.addEventListener('dragleave', e => {
       if (!zone.contains(e.relatedTarget)) zone.classList.remove('drag-over');
     });
-    zone.addEventListener('drop', e => {
+    zone.addEventListener('drop', async e => {
       e.preventDefault();
       zone.classList.remove('drag-over');
-      applyImageFile(e.dataTransfer.files[0]);
+      if (e.dataTransfer.files.length) {
+        applyImageFile(e.dataTransfer.files[0]);
+      } else {
+        const url = e.dataTransfer.getData('text/uri-list') || e.dataTransfer.getData('text/plain');
+        if (url && /^https?:\/\//.test(url)) {
+          try {
+            const resp = await fetch(url);
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            const blob = await resp.blob();
+            if (!blob.type.startsWith('image/')) throw new Error('이미지 파일이 아닙니다');
+            applyImageFile(new File([blob], 'image.png', { type: blob.type }));
+          } catch (err) {
+            setStatus('❌ 이미지 로드 실패 (CORS 차단 가능): ' + err.message, 'error');
+          }
+        }
+      }
+    });
+
+    // Ctrl+V 붙여넣기
+    dialog.addEventListener('paste', e => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      for (const item of items) {
+        if (item.type.startsWith('image/')) {
+          e.preventDefault();
+          const file = item.getAsFile();
+          if (file) applyImageFile(file);
+          return;
+        }
+      }
+    });
+
+    // 스크린스크레이퍼 검색
+    dialog.querySelector('#ssSearchBtn').addEventListener('click', () => {
+      openSsSearch(game.gamePath.replace(/\.[^.]+$/, ''));
     });
   }
 
   // 이미지 정보 비동기 로드
-  if (currentThumbUrl && hasThumbFeature) {
+  if (currentThumbUrl) {
     loadThumbImgInfo(dialog, currentThumbUrl);
   }
 
@@ -843,19 +994,39 @@ function openEditDialog(idx) {
 
     state.games[idx] = updated;
 
-    if (pendingThumbDataUrl && state.thumbDirHandle) {
-      const safeName = nameInput.replace(/[?&/]/g, '_');
-      const fileName = safeName + '.png';
-      try {
-        const fh = await state.thumbDirHandle.getFileHandle(fileName, { create: true });
-        const writable = await fh.createWritable();
-        const blob = await (await fetch(pendingThumbDataUrl)).blob();
-        await writable.write(blob);
-        await writable.close();
+    if (pendingThumbDataUrl) {
+      if (state.importedFrom === 'gamelist' && pendingThumbFile) {
+        const fileName = pendingThumbFile.name;
+        const key = fileName.replace(/\.[^.]+$/, '').toLowerCase();
+        state.thumbnailMap.set(key, pendingThumbDataUrl);
+        state.games[idx]._imagePath = './images/' + fileName;
+        if (state.thumbDirHandle) {
+          try {
+            const fh = await state.thumbDirHandle.getFileHandle(fileName, { create: true });
+            const writable = await fh.createWritable();
+            await writable.write(await pendingThumbFile.arrayBuffer());
+            await writable.close();
+          } catch (e) {
+            setStatus('❌ 이미지 저장 실패: ' + e.message, 'error');
+          }
+        }
+        if (thumbInfoEl) thumbInfoEl.textContent = `✅ ${state.thumbnailMap.size}개 이미지`;
+      } else {
+        const safeName = nameInput.replace(/[?&/]/g, '_');
         state.thumbnailMap.set(safeName.toLowerCase(), pendingThumbDataUrl);
-        thumbInfoEl.textContent = `✅ ${state.thumbnailMap.size}개 이미지`;
-      } catch (e) {
-        setStatus('❌ 이미지 저장 실패: ' + e.message, 'error');
+        if (state.thumbDirHandle) {
+          const fileName = safeName + '.png';
+          try {
+            const fh = await state.thumbDirHandle.getFileHandle(fileName, { create: true });
+            const writable = await fh.createWritable();
+            const blob = await (await fetch(pendingThumbDataUrl)).blob();
+            await writable.write(blob);
+            await writable.close();
+          } catch (e) {
+            setStatus('❌ 이미지 저장 실패: ' + e.message, 'error');
+          }
+        }
+        if (thumbInfoEl) thumbInfoEl.textContent = `✅ ${state.thumbnailMap.size}개 이미지`;
       }
     }
 
@@ -902,6 +1073,38 @@ async function loadThumbImgInfo(dialog, dataUrl) {
 
   infoEl.textContent = [ext, width && height ? `${width}×${height}` : '', bppText]
     .filter(Boolean).join('  ·  ');
+}
+
+// ─── 스크린스크레이퍼 이미지 검색 ────────────────────────────────────────────
+
+function openSsSearch(romName) {
+  const searchUrl = `https://www.screenscraper.fr/recherche.php?recherche=${encodeURIComponent(romName)}`;
+
+  const dlg = document.createElement('dialog');
+  dlg.className = 'ss-dialog';
+  dlg.innerHTML = `
+    <div class="ss-dialog-header">
+      <h4>🌐 스크린스크레이퍼 이미지 검색</h4>
+      <button type="button" class="ss-close-btn" id="ssDlgClose">✕</button>
+    </div>
+    <div class="ss-dialog-body">
+      <p class="ss-rom-name">검색어: <strong>${escHtml(romName)}</strong></p>
+      <a href="${escHtml(searchUrl)}" target="_blank" rel="noopener" class="btn primary ss-open-link">🔗 스크린스크레이퍼에서 검색 열기</a>
+      <div class="ss-instructions">
+        <ol>
+          <li>위 링크를 클릭해 스크린스크레이퍼 사이트에서 게임을 검색하세요.</li>
+          <li>원하는 이미지에서 <strong>우클릭 → 이미지 복사</strong>를 선택하세요.</li>
+          <li>이 창을 닫고 편집 화면으로 돌아와 <strong>Ctrl+V</strong>로 붙여넣기 하세요.</li>
+        </ol>
+      </div>
+      <p class="ss-paste-hint">또는 이미지 파일을 편집 화면의 썸네일 영역으로 드래그하세요.</p>
+    </div>
+  `;
+
+  dlg.querySelector('#ssDlgClose').addEventListener('click', () => dlg.close());
+  document.body.appendChild(dlg);
+  dlg.showModal();
+  dlg.addEventListener('close', () => dlg.remove());
 }
 
 // ─── 경로 일괄 수정 ──────────────────────────────────────────────────────────
@@ -1865,7 +2068,11 @@ function doExport(format) {
 
   let content, filename, mimeType;
 
-  if (format === 'powkiddy') {
+  if (format === 'gamelist') {
+    content = exportGamelistXml(state.games);
+    filename = 'gamelist.xml';
+    mimeType = 'application/xml';
+  } else if (format === 'powkiddy') {
     content = exportPowkiddyXml(state.games);
     filename = 'game_strings_ko.xml';
     mimeType = 'application/xml';
