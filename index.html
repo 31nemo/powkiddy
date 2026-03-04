@@ -27,8 +27,7 @@
           <div class="dropzone-icon">📄</div>
           <p class="dropzone-text">
             <strong>클릭하거나 파일을 드래그하세요</strong><br />
-            <span class="dropzone-sub">Powkiddy <code>game_strings_ko.xml</code> 또는 RetroArch <code>.lpl</code>
-              파일</span>
+            <span class="dropzone-sub">Powkiddy <code>game_strings_ko.xml</code> 또는 RetroArch <code>.lpl</code> 파일</span>
           </p>
         </label>
         <input type="file" id="fileInput" accept=".xml,.lpl" hidden />
@@ -67,9 +66,9 @@
         <button id="moveDownBtn" class="btn" title="아래로 이동">↓ 아래로</button>
         <button id="sortBtn" class="btn" title="가나다순 정렬">가나다 정렬</button>
         <button id="addNumberBtn" class="btn" title="표시 이름 앞에 순번 추가 (1.이름)">번호 넣기</button>
-        <button id="autoFillFilenameBtn" class="btn" title="LPL/XML 파일을 읽어 동일한 ROM 파일명의 표시 이름을 자동 대체합니다">📋 표시이름 자동
-          검색</button>
+        <button id="autoFillFilenameBtn" class="btn" title="LPL/XML 파일을 읽어 동일한 ROM 파일명의 표시 이름을 자동 대체합니다">📋 표시이름 자동변경</button>
         <input type="file" id="autoFillFileInput" accept=".xml,.lpl" hidden />
+        <button id="renameRomBtn" class="btn" title="ROM 파일명에서 &amp;를 _로 변경합니다">🔄 ROM 파일명 자동 변경</button>
         <button id="autoSearchBtn" class="btn" title="폴더를 검색해 이미지 자동 적용">🔍 이미지 자동 검색</button>
         <button id="cleanupThumbBtn" class="btn" title="썸네일 폴더에서 사용되지 않는 이미지 삭제">🗑 이미지 자동 정리</button>
       </div>
@@ -148,6 +147,7 @@
             <span>game_strings_ko.xml</span>
           </div>
           <button id="exportPowkiddy" class="btn primary">내보내기</button>
+          <button id="exportImgPowkiddy" class="btn" title="이미지를 ROM 파일명.png 로 폴더에 저장">🖼️ 이미지 내보내기</button>
         </div>
         <div class="export-card">
           <div class="export-card-icon">🕹️</div>
@@ -156,6 +156,7 @@
             <span>playlist.lpl (JSON)</span>
           </div>
           <button id="exportRetroArch" class="btn secondary">내보내기</button>
+          <button id="exportImgRetroArch" class="btn" title="이미지를 표시이름.png 로 폴더에 저장">🖼️ 이미지 내보내기</button>
         </div>
       </div>
     </section>

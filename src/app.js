@@ -6,7 +6,7 @@ function parsePowkiddyXml(xmlText) {
     .replace(/^\ufeff/, '')
     .replace(/^<\?xml[^?]*\?>/, '<?xml version="1.0"?>')
     .replace(/&(?!amp;|lt;|gt;|quot;|apos;|#)/g, '&amp;')
-    .replace(/=([^"'\s][^\s"'=><\/]*)/g, '="$1"');
+    .replace(/=([^"'\s][^\s"=><\/]*)/g, '="$1"');
 
   const parser = new DOMParser();
   const doc = parser.parseFromString(cleaned, 'text/xml');
@@ -46,7 +46,7 @@ function exportPowkiddyXml(games) {
       const idx = p * pageSize + i;
       if (idx >= total) break;
       const { name, gamePath } = games[idx];
-      xml += `    <icon${i}_para name="${escapeXml(name)}" game_path="${escapeXml(gamePath)}" />\n`;
+      xml += `    <icon${i}_para name="${escapeXml(name.replace(/&/g, '앤'))}" game_path="${escapeXml(gamePath)}" />\n`;
     }
     xml += `  </icon_page${p + 1}>\n`;
   }
@@ -167,6 +167,8 @@ let state = {
   thumbnailMap: new Map(),
   /** @type {FileSystemDirectoryHandle|null} 썸네일 폴더 핸들 (readwrite) */
   thumbDirHandle: null,
+  /** @type {FileSystemDirectoryHandle|null} ROM 폴더 핸들 (readwrite) */
+  romDirHandle: null,
 };
 
 // ─── DOM 참조 ─────────────────────────────────────────────────────────────────
@@ -183,10 +185,13 @@ const moveUpBtn = document.getElementById('moveUpBtn');
 const moveDownBtn = document.getElementById('moveDownBtn');
 const sortBtn = document.getElementById('sortBtn');
 const addNumberBtn = document.getElementById('addNumberBtn');
+const renameRomBtn = document.getElementById('renameRomBtn');
 const autoSearchBtn = document.getElementById('autoSearchBtn');
 const cleanupThumbBtn = document.getElementById('cleanupThumbBtn');
 const exportPowkiddyBtn = document.getElementById('exportPowkiddy');
 const exportRetroArchBtn = document.getElementById('exportRetroArch');
+const exportImgPowkiddyBtn = document.getElementById('exportImgPowkiddy');
+const exportImgRetroArchBtn = document.getElementById('exportImgRetroArch');
 const romBasePathEl = document.getElementById('romBasePath');
 const dbNameEl = document.getElementById('dbName');
 const corePathEl = document.getElementById('corePath');
@@ -217,7 +222,6 @@ function init() {
   fileInput.addEventListener('change', e => {
     if (e.target.files.length) handleFile(e.target.files[0]);
   });
-
   folderZone.addEventListener('click', pickFolder);
   folderZone.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') pickFolder(); });
 
@@ -255,10 +259,13 @@ function init() {
   moveDownBtn.addEventListener('click', () => moveSelected(1));
   sortBtn.addEventListener('click', sortByName);
   addNumberBtn.addEventListener('click', addNumbers);
+  renameRomBtn.addEventListener('click', renameRomFiles);
   autoSearchBtn.addEventListener('click', autoSearchImages);
   cleanupThumbBtn.addEventListener('click', cleanupThumbs);
   exportPowkiddyBtn.addEventListener('click', () => doExport('powkiddy'));
   exportRetroArchBtn.addEventListener('click', () => doExport('retroarch'));
+  exportImgPowkiddyBtn.addEventListener('click', () => exportImages('powkiddy'));
+  exportImgRetroArchBtn.addEventListener('click', () => exportImages('retroarch'));
   batchUpdatePathsBtn.addEventListener('click', batchUpdatePaths);
 
   autoFillFilenameBtn.addEventListener('click', () => {
@@ -288,6 +295,8 @@ function handleFile(file) {
         state.games = games;
         state.importedFrom = 'powkiddy';
         state.retroarchMeta = {};
+        romBasePathEl.value = '/sdcard/game/';
+        exportOptionsEl.style.display = 'block';
         setStatus(`✅ Powkiddy XML 로드 완료 - ${games.length}개 게임`, 'success');
       } else if (file.name.endsWith('.lpl')) {
         const { games, meta } = parseRetroArchLpl(text);
@@ -303,6 +312,7 @@ function handleFile(file) {
       } else {
         throw new Error('지원하지 않는 파일 형식입니다. (.xml 또는 .lpl 파일을 사용하세요)');
       }
+      state.romDirHandle = null;
       state.selectedRows.clear();
       state.searchText = '';
       searchEl.value = '';
@@ -332,18 +342,19 @@ function autoFillFilenames(file) {
         return;
       }
 
-      // stem(확장자 제거, 소문자) → 표시 이름 매핑
+      // stem(확장자 제거, 소문자, &→_) → 표시 이름 매핑
+      const normStem = s => s.replace(/\.[^.]+$/, '').replace(/&/g, '_').toLowerCase().slice(0, 70);
       const stemMap = new Map();
       for (const g of sourceGames) {
-        const stem = g.gamePath.replace(/\.[^.]+$/, '').toLowerCase();
-        stemMap.set(stem, g.name);
+        stemMap.set(normStem(g.gamePath), g.name);
       }
 
       let matched = 0;
       for (const game of state.games) {
-        const stem = game.gamePath.replace(/\.[^.]+$/, '').toLowerCase();
+        const stem = normStem(game.gamePath);
         if (stemMap.has(stem)) {
           game.name = stemMap.get(stem);
+          game._autoName = true;
           matched++;
         }
       }
@@ -369,12 +380,13 @@ async function pickFolder() {
   }
   let dirHandle;
   try {
-    dirHandle = await window.showDirectoryPicker();
+    dirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
   } catch (e) {
     if (e.name !== 'AbortError') setStatus('❌ 폴더 선택 실패: ' + e.message, 'error');
     return;
   }
 
+  state.romDirHandle = dirHandle;
   const names = [];
   for await (const [name, handle] of dirHandle.entries()) {
     if (handle.kind !== 'file') continue;
@@ -396,10 +408,9 @@ async function pickFolder() {
   }));
   state.importedFrom = null;
   state.retroarchMeta = {};
-  // DB 이름이 비어있으면 롬 폴더명으로 자동 채우기
-  if (dbNameEl && !dbNameEl.value.trim()) {
-    dbNameEl.value = dirHandle.name + '.lpl';
-  }
+  romBasePathEl.value = `/sdcard/game/${dirHandle.name}/`;
+  if (!dbNameEl.value.trim()) dbNameEl.value = dirHandle.name + '.lpl';
+  exportOptionsEl.style.display = 'block';
   state.selectedRows.clear();
   state.searchText = '';
   searchEl.value = '';
@@ -618,8 +629,8 @@ function renderList() {
 
     tr.innerHTML = `
       <td class="col-num">${origIdx + 1}</td>
-      <td class="col-name" title="${escHtml(game.name)}">${escHtml(game.name)}</td>
-      <td class="col-path" title="${escHtml(game.gamePath)}">${escHtml(game.gamePath)}</td>
+      <td class="col-name" title="${escHtml(game.name)}"${game._autoName ? ' style="color:#ffe066;"' : ''}>${escHtml(game.name)}</td>
+      <td class="col-path" title="${escHtml(game.gamePath)}"${game.gamePath !== romNewName(game.gamePath) ? ' style="color:#ff4d4d;"' : ''}>${escHtml(game.gamePath)}</td>
       ${thumbCell}
       <td class="col-actions">
         <button class="btn-icon" data-action="edit" data-idx="${origIdx}" title="편집">✏️</button>
@@ -820,7 +831,7 @@ function openEditDialog(idx) {
     const dbNameInput = dialog.querySelector('[name="dbName"]').value.trim();
     if (!nameInput || !pathInput) return;
 
-    const updated = { ...game, name: nameInput, gamePath: pathInput };
+    const updated = { ...game, name: nameInput, gamePath: pathInput, _autoName: false };
     // 게임별 ROM 경로 / 코어 경로 / LPL 이름 갱신
     if (romBaseInput) {
       updated._romPath = romBaseInput.replace(/\/$/, '') + '/' + pathInput;
@@ -1141,6 +1152,11 @@ function pickSearchFolders() {
       <div class="folder-picker-add">
         <button type="button" class="btn" id="addFolderBtn">📁 폴더 추가</button>
       </div>
+      <div class="naming-mode-row">
+        <span class="naming-mode-label">저장 파일명:</span>
+        <label class="naming-mode-option"><input type="radio" name="namingMode" value="display" checked> 표시 이름</label>
+        <label class="naming-mode-option"><input type="radio" name="namingMode" value="rom"> ROM 파일명</label>
+      </div>
       <div class="dialog-actions">
         <button type="button" class="btn primary" id="startSearchBtn" disabled>검색 시작</button>
         <button type="button" class="btn" id="cancelFolderPicker">취소</button>
@@ -1223,8 +1239,9 @@ function pickSearchFolders() {
     });
 
     dialog.querySelector('#startSearchBtn').addEventListener('click', () => {
+      const namingMode = dialog.querySelector('[name="namingMode"]:checked').value;
       dialog.close();
-      resolve(folders.map(f => f.handle));
+      resolve({ handles: folders.map(f => f.handle), namingMode });
     });
 
     document.body.appendChild(dialog);
@@ -1245,8 +1262,10 @@ async function autoSearchImages() {
     return;
   }
 
-  const srcHandles = await pickSearchFolders();
-  if (!srcHandles || srcHandles.length === 0) return;
+  const searchResult = await pickSearchFolders();
+  if (!searchResult) return;
+  const { handles: srcHandles, namingMode } = searchResult;
+  if (srcHandles.length === 0) return;
 
   // 검색 프로그레스
   const searchProg = createProgressDialog('🔍 이미지 검색 중...');
@@ -1295,10 +1314,24 @@ async function autoSearchImages() {
   for (const game of state.games) {
     if (getThumbUrl(game)) continue;
 
-    const candidates = fileMap.get(thumbByNameUnderscored)
-      || (thumbByNameUnderscored !== thumbByName ? null : fileMap.get(thumbByName));
+    // 표시 이름으로 검색
+    const thumbByName = game.name.toLowerCase();
+    const thumbByNameUnderscored = game.name.replace(/[?&/]/g, '_').toLowerCase();
+    const candidatesByName = fileMap.get(thumbByNameUnderscored)
+      || (thumbByNameUnderscored !== thumbByName ? fileMap.get(thumbByName) : null);
+
+    // ROM 파일명으로 검색
+    const romStem = game.gamePath.replace(/\.[^.]+$/, '');
+    const romLookupKey = romStem.toLowerCase();
+    const romLookupKeySafe = romStem.replace(/&/g, '_').toLowerCase();
+    const candidatesByRom = fileMap.get(romLookupKey)
+      || (romLookupKeySafe !== romLookupKey ? fileMap.get(romLookupKeySafe) : null);
+
+    const candidates = candidatesByName || candidatesByRom;
+    // saveKey는 namingMode에 따라 thumbnailMap 키 결정 (getThumbUrl과 매칭)
+    const saveKey = namingMode === 'rom' ? romLookupKey : thumbByNameUnderscored;
     if (candidates) {
-      matches.push({ game, candidates, saveKey: thumbByNameUnderscored });
+      matches.push({ game, candidates, saveKey });
     }
   }
 
@@ -1322,8 +1355,9 @@ async function autoSearchImages() {
     try {
       const file = await selectedCandidate.handle.getFile();
       const dataUrl = await fileToDataUrl(file);
-      const safeName = game.name.replace(/[?&/]/g, '_');
-      const fileName = safeName + '.png';
+      const fileName = namingMode === 'rom'
+        ? game.gamePath.replace(/\.[^.]+$/, '') + '.png'
+        : game.name.replace(/[?&/]/g, '_') + '.png';
       const fh = await state.thumbDirHandle.getFileHandle(fileName, { create: true });
       const writable = await fh.createWritable();
       await writable.write(await file.arrayBuffer());
@@ -1530,6 +1564,94 @@ async function showAutoSearchConfirm(matches) {
   });
 }
 
+// ─── ROM 파일명 자동 변경 ─────────────────────────────────────────────────────
+
+function romNewName(gamePath) {
+  const dotIdx = gamePath.lastIndexOf('.');
+  const stem = dotIdx !== -1 ? gamePath.slice(0, dotIdx) : gamePath;
+  const ext  = dotIdx !== -1 ? gamePath.slice(dotIdx) : '';
+  const newStem = stem.replace(/&/g, '_').slice(0, 70);
+  return newStem + ext;
+}
+
+async function renameRomFiles() {
+  if (!state.romDirHandle) {
+    setStatus('⚠️ ROM 파일명 변경은 폴더 불러오기로 목록을 만든 경우에만 가능합니다', 'warn');
+    return;
+  }
+
+  const targets = state.games
+    .map((g, i) => ({ idx: i, game: g }))
+    .filter(({ game }) => game.gamePath !== romNewName(game.gamePath));
+
+  if (targets.length === 0) {
+    setStatus('✅ 변경할 ROM 파일이 없습니다', 'success');
+    return;
+  }
+
+  const confirmed = await showRenameRomConfirm(targets);
+  if (!confirmed) return;
+
+  let success = 0, failed = 0;
+  for (const { idx, game } of targets) {
+    const oldName = game.gamePath;
+    const newName = romNewName(oldName);
+    try {
+      const oldHandle = await state.romDirHandle.getFileHandle(oldName);
+      const file = await oldHandle.getFile();
+      const buffer = await file.arrayBuffer();
+      const newHandle = await state.romDirHandle.getFileHandle(newName, { create: true });
+      const writable = await newHandle.createWritable();
+      await writable.write(buffer);
+      await writable.close();
+      await state.romDirHandle.removeEntry(oldName);
+      state.games[idx].gamePath = newName;
+      success++;
+    } catch (e) {
+      console.error(`파일 변경 실패: ${oldName}`, e);
+      failed++;
+    }
+  }
+
+  renderList();
+  if (failed > 0) {
+    setStatus(`⚠️ ${success}개 변경 완료, ${failed}개 실패`, 'warn');
+  } else {
+    setStatus(`✅ ${success}개 파일명 변경 완료`, 'success');
+  }
+}
+
+function showRenameRomConfirm(targets) {
+  return new Promise(resolve => {
+    const dialog = document.createElement('dialog');
+    dialog.className = 'cleanup-confirm-dialog';
+    const listHtml = targets.map(({ game }) => {
+      const newName = romNewName(game.gamePath);
+      return `<li style="padding:2px 0;"><span style="color:#ff4d4d;">${escHtml(game.gamePath)}</span> → <span style="color:#ffe066;">${escHtml(newName)}</span></li>`;
+    }).join('');
+    dialog.innerHTML = `
+      <h3>⚠️ ROM 파일명 변경 확인</h3>
+      <p class="cleanup-desc">다음 <strong>${targets.length}개</strong> 파일을 변경합니다. (&amp; → _, 70자 초과 시 잘라냄)<br>실제 파일이 변경되며 되돌릴 수 없습니다.</p>
+      <ul class="cleanup-file-list">${listHtml}</ul>
+      <div class="dialog-actions">
+        <button class="btn danger" id="renameRomApply">변경</button>
+        <button class="btn" id="renameRomCancel">취소</button>
+      </div>
+    `;
+    dialog.querySelector('#renameRomApply').addEventListener('click', () => {
+      dialog.close();
+      resolve(true);
+    });
+    dialog.querySelector('#renameRomCancel').addEventListener('click', () => {
+      dialog.close();
+      resolve(false);
+    });
+    document.body.appendChild(dialog);
+    dialog.showModal();
+    dialog.addEventListener('close', () => dialog.remove());
+  });
+}
+
 // ─── 이미지 자동 정리 ──────────────────────────────────────────────────────────
 
 function showCleanupConfirm(fileNames) {
@@ -1669,6 +1791,68 @@ async function cleanupThumbs() {
     ? `✅ ${deleted}개 삭제 완료 (${failed}개 실패)`
     : `✅ ${deleted}개 이미지 삭제 완료`;
   setStatus(msg, 'success');
+}
+
+// ─── 이미지 내보내기 ──────────────────────────────────────────────────────────
+
+function dataUrlToUint8Array(dataUrl) {
+  const [, b64] = dataUrl.split(',');
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
+}
+
+async function exportImages(mode) {
+  if (!state.thumbnailMap.size) {
+    setStatus('⚠️ 이미지가 없습니다 (썸네일 폴더를 먼저 선택하세요)', 'warn');
+    return;
+  }
+  if (state.games.length === 0) {
+    setStatus('⚠️ 게임 목록이 비어있습니다', 'warn');
+    return;
+  }
+
+  let destDir;
+  try {
+    destDir = await window.showDirectoryPicker({ mode: 'readwrite' });
+  } catch (e) {
+    if (e.name !== 'AbortError') setStatus('❌ 폴더 선택 실패: ' + e.message, 'error');
+    return;
+  }
+
+  const prog = createProgressDialog('🖼️ 이미지 내보내기 중...');
+  let success = 0, skip = 0;
+  const total = state.games.length;
+
+  for (let i = 0; i < total; i++) {
+    const game = state.games[i];
+    prog.setProgress(i + 1, total);
+    prog.setStatus(game.name);
+
+    const dataUrl = getThumbUrl(game);
+    if (!dataUrl) { skip++; continue; }
+
+    const stem = mode === 'powkiddy'
+      ? game.gamePath.replace(/\.[^.]+$/, '')
+      : game.name.replace(/[/\\:*?"<>|]/g, '_');
+    const filename = stem + '.png';
+
+    try {
+      const bytes = dataUrlToUint8Array(dataUrl);
+      const fh = await destDir.getFileHandle(filename, { create: true });
+      const writable = await fh.createWritable();
+      await writable.write(bytes);
+      await writable.close();
+      success++;
+    } catch (e) {
+      console.error(`이미지 내보내기 실패 (${filename}):`, e);
+      skip++;
+    }
+  }
+
+  prog.close();
+  setStatus(`✅ ${success}개 이미지 내보내기 완료${skip ? ` (${skip}개 이미지 없음)` : ''}`, 'success');
 }
 
 // ─── 내보내기 ─────────────────────────────────────────────────────────────────
