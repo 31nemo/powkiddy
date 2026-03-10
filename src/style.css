@@ -300,6 +300,18 @@ body {
   background: rgba(255, 75, 110, 0.12);
 }
 
+.btn.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+.btn.active:hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
 .btn-icon {
   background: none;
   border: none;
@@ -1180,6 +1192,40 @@ body {
 }
 
 /* ─── 프로그레스 다이얼로그 ────────────────────────────────────────────── */
+
+.prefix-dialog {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 28px 32px;
+  min-width: 360px;
+  max-width: 480px;
+  box-shadow: var(--shadow);
+  color: var(--text);
+}
+
+.prefix-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(3px);
+}
+
+.prefix-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.prefix-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.prefix-buttons {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
 
 .progress-dialog {
   background: var(--bg2);

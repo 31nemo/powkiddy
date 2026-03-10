@@ -224,6 +224,8 @@ let state = {
   thumbDirHandle: null,
   /** @type {FileSystemDirectoryHandle|null} ROM 폴더 핸들 (readwrite) */
   romDirHandle: null,
+  /** @type {string|null} 표시이름 앞에 붙인 글자 (null이면 미적용) */
+  customPrefix: null,
 };
 
 // ─── DOM 참조 ─────────────────────────────────────────────────────────────────
@@ -240,6 +242,7 @@ const moveUpBtn = document.getElementById('moveUpBtn');
 const moveDownBtn = document.getElementById('moveDownBtn');
 const sortBtn = document.getElementById('sortBtn');
 const addNumberBtn = document.getElementById('addNumberBtn');
+const addPrefixBtn = document.getElementById('addPrefixBtn');
 const renameRomBtn = document.getElementById('renameRomBtn');
 const autoSearchBtn = document.getElementById('autoSearchBtn');
 const cleanupThumbBtn = document.getElementById('cleanupThumbBtn');
@@ -315,6 +318,7 @@ function init() {
   moveDownBtn.addEventListener('click', () => moveSelected(1));
   sortBtn.addEventListener('click', sortByName);
   addNumberBtn.addEventListener('click', addNumbers);
+  addPrefixBtn.addEventListener('click', addPrefix);
   renameRomBtn.addEventListener('click', renameRomFiles);
   autoSearchBtn.addEventListener('click', autoSearchImages);
   cleanupThumbBtn.addEventListener('click', cleanupThumbs);
@@ -347,37 +351,54 @@ function handleFile(file) {
   reader.onload = e => {
     const text = e.target.result;
     try {
+      const hasExistingGames = state.games.length > 0;
+
       if (file.name.endsWith('.xml')) {
         // detect format by root element
         const tmpDoc = new DOMParser().parseFromString(text, 'application/xml');
         const rootTag = tmpDoc.documentElement?.tagName;
         if (rootTag === 'gameList') {
           const { games } = parseGamelistXml(text);
-          state.games = games;
-          state.importedFrom = 'gamelist';
-          state.retroarchMeta = {};
-          exportOptionsEl.style.display = 'block';
-          setStatus(`✅ gamelist.xml 로드 완료 - ${games.length}개 게임`, 'success');
+          if (hasExistingGames) {
+            state.games = state.games.concat(games);
+            setStatus(`✅ gamelist.xml 병합 완료 - ${games.length}개 추가 (총 ${state.games.length}개)`, 'success');
+          } else {
+            state.games = games;
+            state.importedFrom = 'gamelist';
+            state.retroarchMeta = {};
+            exportOptionsEl.style.display = 'block';
+            setStatus(`✅ gamelist.xml 로드 완료 - ${games.length}개 게임`, 'success');
+          }
         } else {
         const { games } = parsePowkiddyXml(text);
-        state.games = games;
-        state.importedFrom = 'powkiddy';
-        state.retroarchMeta = {};
-        romBasePathEl.value = '/sdcard/game/';
-        exportOptionsEl.style.display = 'block';
-        setStatus(`✅ Powkiddy XML 로드 완료 - ${games.length}개 게임`, 'success');
+        if (hasExistingGames) {
+          state.games = state.games.concat(games);
+          setStatus(`✅ Powkiddy XML 병합 완료 - ${games.length}개 추가 (총 ${state.games.length}개)`, 'success');
+        } else {
+          state.games = games;
+          state.importedFrom = 'powkiddy';
+          state.retroarchMeta = {};
+          romBasePathEl.value = '/sdcard/game/';
+          exportOptionsEl.style.display = 'block';
+          setStatus(`✅ Powkiddy XML 로드 완료 - ${games.length}개 게임`, 'success');
+        }
         }
       } else if (file.name.endsWith('.lpl')) {
         const { games, meta } = parseRetroArchLpl(text);
-        state.games = games;
-        state.importedFrom = 'retroarch';
-        state.retroarchMeta = meta;
-        // 파싱한 메타 정보를 입력 필드에 자동 반영
-        romBasePathEl.value = meta.romBasePath || '';
-        dbNameEl.value = meta.dbName || '';
-        corePathEl.value = meta.corePath || '';
-        exportOptionsEl.style.display = 'block';
-        setStatus(`✅ RetroArch .lpl 로드 완료 - ${games.length}개 게임`, 'success');
+        if (hasExistingGames) {
+          state.games = state.games.concat(games);
+          setStatus(`✅ RetroArch .lpl 병합 완료 - ${games.length}개 추가 (총 ${state.games.length}개)`, 'success');
+        } else {
+          state.games = games;
+          state.importedFrom = 'retroarch';
+          state.retroarchMeta = meta;
+          // 파싱한 메타 정보를 입력 필드에 자동 반영
+          romBasePathEl.value = meta.romBasePath || '';
+          dbNameEl.value = meta.dbName || '';
+          corePathEl.value = meta.corePath || '';
+          exportOptionsEl.style.display = 'block';
+          setStatus(`✅ RetroArch .lpl 로드 완료 - ${games.length}개 게임`, 'success');
+        }
       } else {
         throw new Error('지원하지 않는 파일 형식입니다. (.xml 또는 .lpl 파일을 사용하세요)');
       }
@@ -1263,6 +1284,64 @@ function addNumbers() {
     setStatus(`✅ ${state.games.length}개 게임에 번호를 추가했습니다.`, 'success');
   }
   renderList();
+}
+
+// ─── 글자 넣기 ────────────────────────────────────────────────────────────────
+
+function addPrefix() {
+  if (state.games.length === 0) {
+    setStatus('⚠️ 게임 목록이 비어 있습니다.', 'warn');
+    return;
+  }
+  // 이미 글자가 적용된 상태면 제거
+  if (state.customPrefix !== null) {
+    const prefix = state.customPrefix;
+    state.games.forEach(game => {
+      if (game.name.startsWith(prefix)) {
+        game.name = game.name.slice(prefix.length);
+      }
+    });
+    state.customPrefix = null;
+    addPrefixBtn.classList.remove('active');
+    setStatus(`✅ 글자 "${prefix}"를 제거했습니다.`, 'success');
+    renderList();
+    return;
+  }
+  // 글자 입력 다이얼로그 표시
+  const dialog = document.createElement('dialog');
+  dialog.className = 'prefix-dialog';
+  dialog.innerHTML = `
+    <form method="dialog" class="prefix-form">
+      <label class="prefix-label">표시이름 앞에 넣을 글자를 입력하세요</label>
+      <input type="text" id="prefixInput" class="text-input" placeholder="예: [완료] " autofocus />
+      <div class="prefix-buttons">
+        <button type="submit" class="btn primary" id="prefixConfirm">확인</button>
+        <button type="button" class="btn" id="prefixCancel">취소</button>
+      </div>
+    </form>
+  `;
+  document.body.appendChild(dialog);
+  dialog.showModal();
+  dialog.querySelector('#prefixCancel').addEventListener('click', () => {
+    dialog.close();
+    dialog.remove();
+  });
+  dialog.querySelector('form').addEventListener('submit', e => {
+    e.preventDefault();
+    const prefix = dialog.querySelector('#prefixInput').value;
+    if (!prefix) {
+      dialog.close();
+      dialog.remove();
+      return;
+    }
+    state.games.forEach(game => { game.name = prefix + game.name; });
+    state.customPrefix = prefix;
+    addPrefixBtn.classList.add('active');
+    setStatus(`✅ ${state.games.length}개 게임 앞에 "${prefix}"를 추가했습니다.`, 'success');
+    dialog.close();
+    dialog.remove();
+    renderList();
+  });
 }
 
 // ─── 프로그레스 다이얼로그 ─────────────────────────────────────────────────────
