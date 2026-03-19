@@ -644,34 +644,22 @@ async function uploadThumb(game) {
     return;
   }
 
-  // PNG로 변환
-  let pngDataUrl;
-  try {
-    pngDataUrl = await toPngDataUrl(file);
-  } catch (e) {
-    setStatus('❌ 이미지 변환 실패: ' + e.message, 'error');
-    return;
-  }
-
-  // 파일명: 표시 이름에서 ?&/ → _ 로 치환 + .png
+  const ext = file.name.includes('.') ? '.' + file.name.split('.').pop().toLowerCase() : '.png';
   const safeName = game.name.replace(/[?&/]/g, '_');
-  const fileName = safeName + '.png';
+  const fileName = safeName + ext;
 
   try {
     const fileHandle = await state.thumbDirHandle.getFileHandle(fileName, { create: true });
     const writable = await fileHandle.createWritable();
-    const res = await fetch(pngDataUrl);
-    const blob = await res.blob();
-    await writable.write(blob);
+    await writable.write(await file.arrayBuffer());
     await writable.close();
   } catch (e) {
     setStatus('❌ 파일 저장 실패: ' + e.message, 'error');
     return;
   }
 
-  // thumbnailMap 갱신 (thumbByNameUnderscored 키와 일치)
   const key = safeName.toLowerCase();
-  state.thumbnailMap.set(key, pngDataUrl);
+  state.thumbnailMap.set(key, await fileToDataUrl(file));
   thumbInfoEl.textContent = `✅ ${state.thumbnailMap.size}개 이미지`;
   setStatus(`✅ ${fileName} 저장 완료`, 'success');
   renderList();
@@ -937,9 +925,7 @@ function openEditDialog(idx) {
       if (!file || !file.type.startsWith('image/')) return;
       try {
         pendingThumbFile = file;
-        pendingThumbDataUrl = state.importedFrom === 'gamelist'
-          ? await fileToDataUrl(file)
-          : await toPngDataUrl(file);
+        pendingThumbDataUrl = await fileToDataUrl(file);
         let preview = zone.querySelector('#thumbEditPreview');
         if (preview.tagName === 'IMG') {
           preview.src = pendingThumbDataUrl;
@@ -1056,12 +1042,12 @@ function openEditDialog(idx) {
         const safeName = nameInput.replace(/[?&/]/g, '_');
         state.thumbnailMap.set(safeName.toLowerCase(), pendingThumbDataUrl);
         if (state.thumbDirHandle) {
-          const fileName = safeName + '.png';
+          const ext = pendingThumbFile ? '.' + pendingThumbFile.name.split('.').pop().toLowerCase() : '.png';
+          const fileName = safeName + ext;
           try {
             const fh = await state.thumbDirHandle.getFileHandle(fileName, { create: true });
             const writable = await fh.createWritable();
-            const blob = await (await fetch(pendingThumbDataUrl)).blob();
-            await writable.write(blob);
+            await writable.write(await pendingThumbFile.arrayBuffer());
             await writable.close();
           } catch (e) {
             setStatus('❌ 이미지 저장 실패: ' + e.message, 'error');
