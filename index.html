@@ -22,7 +22,7 @@
     <!-- 파일 가져오기 / 생성하기 -->
     <section class="panel import-panel">
       <div class="import-col">
-        <h2>📂 파일 불러오기</h2>
+        <h2>📂 파일 목록 불러오기</h2>
         <label id="dropzone" for="fileInput" class="dropzone" tabindex="0" role="button" aria-label="파일 열기">
           <div class="dropzone-icon">📄</div>
           <p class="dropzone-text">
@@ -34,7 +34,7 @@
       </div>
       <div class="import-divider"></div>
       <div class="import-col">
-        <h2>📁 파일 생성하기</h2>
+        <h2>📁 ROM파일 불러오기</h2>
         <div id="folderZone" class="dropzone" tabindex="0" role="button" aria-label="폴더 선택">
           <div class="dropzone-icon">🗂️</div>
           <p class="dropzone-text">
@@ -45,7 +45,7 @@
       </div>
       <div class="import-divider"></div>
       <div class="import-col import-col--thumb">
-        <h2>🖼️ 이미지 확인</h2>
+        <h2>🖼️ 이미지 불러오기</h2>
         <div class="thumb-check-area">
           <label class="thumb-label">
             <input type="checkbox" id="thumbCheck" />
@@ -72,6 +72,7 @@
         <button id="renameRomBtn" class="btn" title="ROM 파일명에서 &amp;를 _로 변경합니다">🔄 ROM 파일명 자동 변경</button>
         <button id="autoSearchBtn" class="btn" title="폴더를 검색해 이미지 자동 적용">🔍 이미지 자동 검색</button>
         <button id="cleanupThumbBtn" class="btn" title="썸네일 폴더에서 사용되지 않는 이미지 삭제">🗑 이미지 자동 정리</button>
+        <button id="resizeImgBtn" class="btn" title="썸네일 폴더의 이미지를 지정 크기/비트로 변환">🗜 이미지 용량 줄이기</button>
       </div>
       <div class="toolbar-right">
         <input type="search" id="searchInput" class="search-input" placeholder="🔍 게임 검색..." aria-label="게임 검색" />
@@ -87,6 +88,7 @@
           <button class="list-filter-chip active" data-filter="all">전체</button>
           <button class="list-filter-chip" data-filter="no-image">🖼️ 이미지 없음</button>
           <button class="list-filter-chip" data-filter="no-rom">📂 ROM 없음</button>
+          <button class="list-filter-chip" data-filter="has-rom">📂 ROM 있음</button>
         </div>
       </div>
       <div class="table-wrap">

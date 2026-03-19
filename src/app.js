@@ -215,7 +215,7 @@ let state = {
   retroarchMeta: {},
   selectedRows: new Set(),
   searchText: '',
-  /** @type {'all'|'no-image'|'no-rom'} */
+  /** @type {'all'|'no-image'|'no-rom'|'has-rom'} */
   gameFilter: 'all',
   editingIdx: null,
   /** @type {Map<string, string>} basename(소문자) -> data URL (base64) */
@@ -246,6 +246,7 @@ const addPrefixBtn = document.getElementById('addPrefixBtn');
 const renameRomBtn = document.getElementById('renameRomBtn');
 const autoSearchBtn = document.getElementById('autoSearchBtn');
 const cleanupThumbBtn = document.getElementById('cleanupThumbBtn');
+const resizeImgBtn = document.getElementById('resizeImgBtn');
 const exportPowkiddyBtn = document.getElementById('exportPowkiddy');
 const exportRetroArchBtn = document.getElementById('exportRetroArch');
 const exportImgPowkiddyBtn = document.getElementById('exportImgPowkiddy');
@@ -322,6 +323,7 @@ function init() {
   renameRomBtn.addEventListener('click', renameRomFiles);
   autoSearchBtn.addEventListener('click', autoSearchImages);
   cleanupThumbBtn.addEventListener('click', cleanupThumbs);
+  resizeImgBtn.addEventListener('click', resizeImages);
   exportPowkiddyBtn.addEventListener('click', () => doExport('powkiddy'));
   exportRetroArchBtn.addEventListener('click', () => doExport('retroarch'));
   exportImgPowkiddyBtn.addEventListener('click', () => exportImages('powkiddy'));
@@ -481,7 +483,6 @@ async function pickFolder() {
     return;
   }
 
-  state.romDirHandle = dirHandle;
   const names = [];
   for await (const [name, handle] of dirHandle.entries()) {
     if (handle.kind !== 'file') continue;
@@ -495,8 +496,23 @@ async function pickFolder() {
     return;
   }
 
+  // 기존 목록이 있으면 매핑 모드
+  if (state.games.length > 0) {
+    const romSet = new Set(names.map(n => n.toLowerCase()));
+    let matched = 0;
+    for (const game of state.games) {
+      game._romMatched = romSet.has((game.gamePath || '').toLowerCase());
+      if (game._romMatched) matched++;
+    }
+    state.romDirHandle = dirHandle;
+    renderList();
+    setStatus(`✅ ROM 매핑 완료 - ${matched} / ${state.games.length}개 일치`, 'success');
+    return;
+  }
+
   names.sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
 
+  state.romDirHandle = dirHandle;
   state.games = names.map(name => ({
     name: name.replace(/\.[^.]+$/, ''),
     gamePath: name,
@@ -722,7 +738,9 @@ function renderList() {
   if (state.gameFilter === 'no-image') {
     filtered = filtered.filter(g => !getThumbUrl(g));
   } else if (state.gameFilter === 'no-rom') {
-    filtered = filtered.filter(g => !g.gamePath);
+    filtered = filtered.filter(g => !g.gamePath || g._romMatched === false);
+  } else if (state.gameFilter === 'has-rom') {
+    filtered = filtered.filter(g => g.gamePath && g._romMatched !== false);
   }
 
   // 카운트 표시
@@ -748,6 +766,8 @@ function renderList() {
     const tr = document.createElement('tr');
     tr.dataset.idx = origIdx;
     if (state.selectedRows.has(origIdx)) tr.classList.add('selected');
+    if (game._romMatched === true) tr.classList.add('rom-matched');
+    else if (game._romMatched === false) tr.classList.add('rom-missing');
 
     const thumbUrl = getThumbUrl(game);
     const thumbCell = hasThumb
@@ -2073,6 +2093,221 @@ async function cleanupThumbs() {
     ? `✅ ${deleted}개 삭제 완료 (${failed}개 실패)`
     : `✅ ${deleted}개 이미지 삭제 완료`;
   setStatus(msg, 'success');
+}
+
+// ─── 이미지 용량 줄이기 ───────────────────────────────────────────────────────
+
+const PNG_CRC_TABLE = (() => {
+  const t = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1);
+    t[n] = c;
+  }
+  return t;
+})();
+
+function pngCrc32(buf) {
+  let c = 0xffffffff;
+  for (let i = 0; i < buf.length; i++) c = PNG_CRC_TABLE[(c ^ buf[i]) & 0xff] ^ (c >>> 8);
+  return (c ^ 0xffffffff) >>> 0;
+}
+
+function makePngChunk(type, data) {
+  const typeBytes = new TextEncoder().encode(type);
+  const chunk = new Uint8Array(12 + data.length);
+  const view = new DataView(chunk.buffer);
+  view.setUint32(0, data.length);
+  chunk.set(typeBytes, 4);
+  chunk.set(data, 8);
+  const crcBuf = new Uint8Array(4 + data.length);
+  crcBuf.set(typeBytes);
+  crcBuf.set(data, 4);
+  view.setUint32(8 + data.length, pngCrc32(crcBuf));
+  return chunk;
+}
+
+async function deflateRaw(data) {
+  const cs = new CompressionStream('deflate-raw');
+  const writer = cs.writable.getWriter();
+  writer.write(data);
+  writer.close();
+  const reader = cs.readable.getReader();
+  const chunks = [];
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+  }
+  const total = chunks.reduce((s, c) => s + c.length, 0);
+  const out = new Uint8Array(total);
+  let off = 0;
+  for (const c of chunks) { out.set(c, off); off += c.length; }
+  return out;
+}
+
+async function toIndexed8bitPng(canvas) {
+  const w = canvas.width, h = canvas.height;
+  const pixels = canvas.getContext('2d').getImageData(0, 0, w, h).data;
+
+  // 고정 256색 팔레트 (R:3bit, G:3bit, B:2bit)
+  const palette = new Uint8Array(256 * 3);
+  for (let r = 0; r < 8; r++)
+    for (let g = 0; g < 8; g++)
+      for (let b = 0; b < 4; b++) {
+        const idx = r * 32 + g * 4 + b;
+        palette[idx * 3 + 0] = Math.round(r * 255 / 7);
+        palette[idx * 3 + 1] = Math.round(g * 255 / 7);
+        palette[idx * 3 + 2] = Math.round(b * 255 / 3);
+      }
+
+  // 픽셀별 팔레트 인덱스 (필터 바이트 포함)
+  const raw = new Uint8Array(h * (w + 1));
+  for (let y = 0; y < h; y++) {
+    raw[y * (w + 1)] = 0; // filter: None
+    for (let x = 0; x < w; x++) {
+      const pi = (y * w + x) * 4;
+      const r = (pixels[pi]     * 7 / 255 + 0.5) | 0;
+      const g = (pixels[pi + 1] * 7 / 255 + 0.5) | 0;
+      const b = (pixels[pi + 2] * 3 / 255 + 0.5) | 0;
+      raw[y * (w + 1) + 1 + x] = r * 32 + g * 4 + b;
+    }
+  }
+
+  const compressed = await deflateRaw(raw);
+
+  const ihdrData = new Uint8Array(13);
+  const ihdrView = new DataView(ihdrData.buffer);
+  ihdrView.setUint32(0, w);
+  ihdrView.setUint32(4, h);
+  ihdrData[8] = 8; // bit depth
+  ihdrData[9] = 3; // color type: indexed
+
+  const sig  = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
+  const ihdr = makePngChunk('IHDR', ihdrData);
+  const plte = makePngChunk('PLTE', palette);
+  const idat = makePngChunk('IDAT', compressed);
+  const iend = makePngChunk('IEND', new Uint8Array(0));
+
+  const out = new Uint8Array(sig.length + ihdr.length + plte.length + idat.length + iend.length);
+  let off = 0;
+  for (const c of [sig, ihdr, plte, idat, iend]) { out.set(c, off); off += c.length; }
+  return out;
+}
+
+async function resizeImages() {
+  if (!state.thumbDirHandle) {
+    setStatus('⚠️ 먼저 이미지 폴더를 불러오세요 (이미지 확인 체크박스)', 'warn');
+    return;
+  }
+
+  // 입력 다이얼로그
+  const params = await new Promise(resolve => {
+    const dialog = document.createElement('dialog');
+    dialog.className = 'prefix-dialog';
+    dialog.innerHTML = `
+      <form method="dialog" class="prefix-form">
+        <label class="prefix-label">이미지 변환 설정</label>
+        <div style="display:flex;gap:12px;margin:12px 0;">
+          <label style="display:flex;flex-direction:column;gap:4px;font-size:13px;">너비
+            <input type="number" id="ri_w" class="text-input" value="320" min="1" style="width:80px;" />
+          </label>
+          <label style="display:flex;flex-direction:column;gap:4px;font-size:13px;">높이
+            <input type="number" id="ri_h" class="text-input" value="240" min="1" style="width:80px;" />
+          </label>
+          <label style="display:flex;flex-direction:column;gap:4px;font-size:13px;">색상(bit)
+            <input type="number" id="ri_b" class="text-input" value="8" min="1" max="32" style="width:70px;" />
+          </label>
+        </div>
+        <div class="prefix-buttons">
+          <button type="submit" class="btn primary">변환 시작</button>
+          <button type="button" class="btn" id="riCancel">취소</button>
+        </div>
+      </form>
+    `;
+    document.body.appendChild(dialog);
+    dialog.showModal();
+    dialog.querySelector('#riCancel').addEventListener('click', () => {
+      dialog.close(); dialog.remove(); resolve(null);
+    });
+    dialog.querySelector('form').addEventListener('submit', e => {
+      e.preventDefault();
+      const w = parseInt(dialog.querySelector('#ri_w').value) || 320;
+      const h = parseInt(dialog.querySelector('#ri_h').value) || 240;
+      const b = parseInt(dialog.querySelector('#ri_b').value) || 8;
+      dialog.close(); dialog.remove();
+      resolve({ w, h, b });
+    });
+  });
+  if (!params) return;
+  const { w, h, b } = params;
+
+  // 썸네일 폴더에서 이미지 목록 수집
+  const entries = [];
+  for await (const [name, handle] of state.thumbDirHandle.entries()) {
+    if (handle.kind !== 'file') continue;
+    const ext = name.includes('.') ? '.' + name.split('.').pop().toLowerCase() : '';
+    if (THUMB_EXTS.has(ext)) entries.push({ name, handle });
+  }
+
+  if (entries.length === 0) {
+    setStatus('⚠️ 변환할 이미지가 없습니다', 'warn');
+    return;
+  }
+
+  const prog = createProgressDialog('🖼️ 이미지 변환 중...');
+  prog.setProgress(0, entries.length);
+
+  let successCount = 0;
+  for (let i = 0; i < entries.length; i++) {
+    const { name, handle } = entries[i];
+    prog.setProgress(i + 1, entries.length);
+    prog.setStatus(`${i + 1} / ${entries.length}  —  ${name}`);
+    await new Promise(r => setTimeout(r, 0));
+    try {
+      const file = await handle.getFile();
+      const canvas = await new Promise((res, rej) => {
+        const img = new Image();
+        const url = URL.createObjectURL(file);
+        img.onload = () => {
+          const c = document.createElement('canvas');
+          c.width = w; c.height = h;
+          c.getContext('2d').drawImage(img, 0, 0, w, h);
+          URL.revokeObjectURL(url);
+          res(c);
+        };
+        img.onerror = () => { URL.revokeObjectURL(url); rej(new Error('이미지 로드 실패')); };
+        img.src = url;
+      });
+
+      let pngBytes;
+      if (b <= 8) {
+        pngBytes = await toIndexed8bitPng(canvas);
+      } else {
+        const dataUrl = canvas.toDataURL('image/png');
+        pngBytes = dataUrlToUint8Array(dataUrl);
+      }
+
+      const outName = name.replace(/\.[^.]+$/, '') + '.png';
+      const fh = await state.thumbDirHandle.getFileHandle(outName, { create: true });
+      const writable = await fh.createWritable();
+      await writable.write(pngBytes);
+      await writable.close();
+
+      // thumbnailMap 갱신
+      const basename = outName.replace(/\.[^.]+$/, '').toLowerCase();
+      const blob = new Blob([pngBytes], { type: 'image/png' });
+      state.thumbnailMap.set(basename, await fileToDataUrl(blob));
+      successCount++;
+    } catch (e) {
+      console.error(`변환 실패 (${name}):`, e);
+    }
+  }
+
+  prog.close();
+  thumbInfoEl.textContent = `📁 ${state.thumbDirHandle.name}  ·  ✅ ${state.thumbnailMap.size}개 이미지`;
+  setStatus(`✅ ${successCount} / ${entries.length}개 이미지 변환 완료 (${w}×${h}, ${b}bit)`, 'success');
+  renderList();
 }
 
 // ─── 이미지 내보내기 ──────────────────────────────────────────────────────────

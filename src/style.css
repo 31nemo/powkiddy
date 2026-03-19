@@ -463,6 +463,14 @@ body {
   border-left: 2px solid var(--accent);
 }
 
+.game-table tbody tr.rom-matched .col-path {
+  color: var(--text);
+}
+
+.game-table tbody tr.rom-missing .col-path {
+  color: #444;
+}
+
 .col-num {
   width: 50px;
   color: var(--text-muted);
